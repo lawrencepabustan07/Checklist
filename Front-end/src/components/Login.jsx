@@ -1,6 +1,5 @@
 import { useState } from "react";
-
-const API_BASE = "http://127.0.0.1:8000/api/auth";
+import { login, register } from "../services/api";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -14,41 +13,34 @@ export default function LoginPage() {
     setError("");
 
     try {
-      const res = await fetch(`${API_BASE}/login/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
+      const loginResponse = await login(email, password);
+      const loginData = loginResponse.data;
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.message || "Login failed");
+      if (loginData.status === "error") {
+        setError(loginData.message || "Login failed");
         return;
       }
 
-      const regRes = await fetch(`${API_BASE}/register/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          method: "auth0",
-          credential: data.data.access_token,
-        }),
-      });
+      const auth0Token = loginData.data.access_token;
 
-      const regData = await regRes.json();
+      const registerResponse = await register(auth0Token);
+      const registerData = registerResponse.data;
 
-      if (!regRes.ok) {
-        setError(regData.message || "Registration failed");
+      if (registerData.status === "error") {
+        setError(registerData.message || "Registration failed");
         return;
       }
 
-      localStorage.setItem("access_token", regData.access_token);
-      localStorage.setItem("email", regData.email);
+      localStorage.setItem("access_token", registerData.access_token);
+      localStorage.setItem("email", registerData.email);
 
-      alert(`Welcome, ${regData.email}`);
+      alert(`Welcome, ${registerData.email}`);
     } catch (err) {
-      setError("Something went wrong. Please try again.");
+      console.error("Login error:", err);
+      setError(
+        err.response?.data?.message ||
+          "Something went wrong. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
