@@ -39,16 +39,16 @@ class ChecklistSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"Type must be one of: {', '.join(valid_types)}")
         
         return value.strip()
-
+    
     def create(self, validated_data):
         items_data = validated_data.pop('items', [])
         checklist = Checklist.objects.create(**validated_data)
-        
+
         for item_data in items_data:
-            ChecklistItem.objects.create(checklist=checklist, **item_data)
-        
+         ChecklistItem.objects.create(checklist=checklist, **item_data)
+
         return checklist
-    
+
     def update(self, instance, validated_data):
         items_data = validated_data.pop('items', None)
         

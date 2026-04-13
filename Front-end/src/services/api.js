@@ -9,10 +9,6 @@ const api = axios.create({
   },
 });
 
-export const login = (email, password) => {
-  return api.post("/login/", { email, password });
-};
-
 export const register = (credential) => {
   return api.post("/register/", {
     method: "auth0",

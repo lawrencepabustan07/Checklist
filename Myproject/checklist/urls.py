@@ -5,7 +5,9 @@ from . import views
 
 router = DefaultRouter()
 router.register(r'checklist', views.ChecklistViewSet)
+router.register(r'checklist/(?P<checklist_pk>[^/.]+)/items', views.ChecklistItemViewSet, basename='checklist-items')
 router.register(r'items', views.ChecklistItemViewSet)
+
 
 urlpatterns = [
     path('', include(router.urls)),

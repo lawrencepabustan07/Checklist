@@ -1,3 +1,4 @@
+# checklist/views/checklistitems_view.py
 from rest_framework.decorators import action
 from rest_framework import viewsets, status
 from rest_framework.response import Response
@@ -13,136 +14,146 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        
         return ChecklistItem.objects.filter(checklist__created_by=self.request.user)
 
-    @action(detail=True, methods=['post'], url_path='item')
-    def create_item(self, request, pk=None):
-        """POST /api/checklist/{id}/item/ - Create item"""
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        return context
+
+    # ✅ Override create method
+    def create(self, request, *args, **kwargs):
+        """POST /api/checklist/{checklist_pk}/items/"""
+        checklist_pk = self.kwargs.get('checklist_pk')
+        
+        if not checklist_pk:
+            return Response({
+                'error': 'Checklist ID is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         try:
-            checklist = self.get_object()
+            checklist = Checklist.objects.get(pk=checklist_pk)
         except Checklist.DoesNotExist:
             return Response({
-                'status': 'error',
-                'message': 'Checklist not found'
+                'error': 'Checklist not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = ChecklistItemSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         
         if serializer.is_valid():
             try:
                 item = serializer.save(checklist=checklist)
                 return Response({
-                    'checklist_id': item.checklist.id,
+                    'id': str(item.id),
                     'label': item.label,
                     'type': item.type
                 }, status=status.HTTP_201_CREATED)
             except IntegrityError:
                 return Response({
-                    'status': 'error',
-                    'message': 'An item with this label already exists in this checklist.'
+                    'error': 'An item with this label already exists in this checklist.'
                 }, status=status.HTTP_400_BAD_REQUEST)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['get'], url_path='items')
-    def get_items(self, request, pk=None):
-        """GET /api/checklist/{id}/items/ - Get all items of checklist"""
+    # ✅ Override list method
+    def list(self, request, *args, **kwargs):
+        """GET /api/checklist/{checklist_pk}/items/"""
+        checklist_pk = self.kwargs.get('checklist_pk')
+        
+        if not checklist_pk:
+            return Response({
+                'error': 'Checklist ID is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         try:
-            checklist = self.get_object()
+            checklist = Checklist.objects.get(pk=checklist_pk)
         except Checklist.DoesNotExist:
             return Response({
-                'status': 'error',
-                'message': 'Checklist not found'
+                'error': 'Checklist not found'
             }, status=status.HTTP_404_NOT_FOUND)
 
         items = checklist.items.all()
-        return Response({
-            'status': 'success',
-            'count': items.count(),
-            'data': ChecklistItemSerializer(items, many=True).data
-        }, status=status.HTTP_200_OK)
+        serializer = self.get_serializer(items, many=True)
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['get'], url_path='item/(?P<item_id>[^/.]+)')
-    def get_item(self, request, pk=None, item_id=None):
-        """GET /api/checklist/{id}/item/{item_id}/ - Get one item"""
+    # ✅ Override retrieve method
+    def retrieve(self, request, *args, **kwargs):
+        """GET /api/checklist/{checklist_pk}/items/{pk}/"""
+        checklist_pk = self.kwargs.get('checklist_pk')
+        pk = self.kwargs.get('pk')
+        
         try:
-            checklist = self.get_object()
+            checklist = Checklist.objects.get(pk=checklist_pk)
         except Checklist.DoesNotExist:
             return Response({
-                'status': 'error',
-                'message': 'Checklist not found'
+                'error': 'Checklist not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
         try:
-            item = ChecklistItem.objects.get(id=item_id, checklist=checklist)
+            item = ChecklistItem.objects.get(id=pk, checklist=checklist)
         except ChecklistItem.DoesNotExist:
             return Response({
-                'status': 'error',
-                'message': 'Item not found'
+                'error': 'Item not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        return Response({
-            'checklist_id': item.checklist.id,
-            'label': item.label,
-            'type': item.type
-        }, status=status.HTTP_200_OK)
+        serializer = self.get_serializer(item)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['patch'], url_path='item/(?P<item_id>[^/.]+)')
-    def update_item(self, request, pk=None, item_id=None):
-        """PATCH /api/checklist/{id}/item/{item_id}/ - Update item"""
+    # ✅ Override update method
+    def update(self, request, *args, **kwargs):
+        """PUT/PATCH /api/checklist/{checklist_pk}/items/{pk}/"""
+        checklist_pk = self.kwargs.get('checklist_pk')
+        pk = self.kwargs.get('pk')
+        
         try:
-            checklist = self.get_object()
+            checklist = Checklist.objects.get(pk=checklist_pk)
         except Checklist.DoesNotExist:
             return Response({
-                'status': 'error',
-                'message': 'Checklist not found'
+                'error': 'Checklist not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
         try:
-            item = ChecklistItem.objects.get(id=item_id, checklist=checklist)
+            item = ChecklistItem.objects.get(id=pk, checklist=checklist)
         except ChecklistItem.DoesNotExist:
             return Response({
-                'status': 'error',
-                'message': 'Item not found'
+                'error': 'Item not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        serializer = ChecklistItemSerializer(item, data=request.data, partial=True)
+        serializer = self.get_serializer(item, data=request.data, partial=True)
         
         if serializer.is_valid():
             try:
                 item = serializer.save()
+                return Response({
+                    'id': str(item.id),
+                    'label': item.label,
+                    'type': item.type
+                }, status=status.HTTP_200_OK)
             except IntegrityError:
                 return Response({
-                    'status': 'error',
-                    'message': 'An item with this label already exists in this checklist.'
+                    'error': 'An item with this label already exists in this checklist.'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
-            return Response({
-                'checklist_id': item.checklist.id,
-                'label': item.label,
-                'type': item.type
-            }, status=status.HTTP_200_OK)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=True, methods=['delete'], url_path='item/(?P<item_id>[^/.]+)')
-    def delete_item(self, request, pk=None, item_id=None):
-        """DELETE /api/checklist/{id}/item/{item_id}/ - Delete item"""
+    # ✅ Override destroy method
+    def destroy(self, request, *args, **kwargs):
+        """DELETE /api/checklist/{checklist_pk}/items/{pk}/"""
+        checklist_pk = self.kwargs.get('checklist_pk')
+        pk = self.kwargs.get('pk')
+        
         try:
-            checklist = self.get_object()
+            checklist = Checklist.objects.get(pk=checklist_pk)
         except Checklist.DoesNotExist:
             return Response({
-                'status': 'error',
-                'message': 'Checklist not found'
+                'error': 'Checklist not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
         try:
-            item = ChecklistItem.objects.get(id=item_id, checklist=checklist)
+            item = ChecklistItem.objects.get(id=pk, checklist=checklist)
         except ChecklistItem.DoesNotExist:
             return Response({
-                'status': 'error',
-                'message': 'Item not found'
+                'error': 'Item not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
         item.delete()

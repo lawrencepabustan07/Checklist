@@ -7,7 +7,6 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 import requests
 from django.conf import settings
 from django.contrib.auth.models import User
-
 class Auth0LoginView(APIView):
     """
     POST /api/auth/login/
@@ -72,6 +71,7 @@ class Auth0UserView(APIView):
             }
         }, status=200)
 
+
 class RegisterView(APIView):
     permission_classes = [AllowAny]
 
@@ -92,28 +92,35 @@ class RegisterView(APIView):
             }, status=400)
 
         try:
-            jwks_url = f'https://{settings.AUTH0_DOMAIN}/.well-known/jwks.json'
-            jwks_client = pyjwt.PyJWKClient(jwks_url)
-            signing_key = jwks_client.get_signing_key_from_jwt(credential)
-
-            payload = pyjwt.decode(
-                credential,
-                signing_key.key,
-                algorithms=['RS256'],
-                audience=settings.AUTH0_AUDIENCE,
-                issuer=f'https://{settings.AUTH0_DOMAIN}/'
-            )
-
-            email = payload.get('https://checklist-api.com/email')
+            # ✅ Use Auth0's UserInfo endpoint (bypasses JWT decoding issues)
+            userinfo_url = f'https://{settings.AUTH0_DOMAIN}/userinfo'
+            headers = {'Authorization': f'Bearer {credential}'}
+            
+            response = requests.get(userinfo_url, headers=headers)
+            
+            if response.status_code != 200:
+                print(f"UserInfo error: {response.status_code} - {response.text}")
+                return Response({
+                    'status': 'error',
+                    'message': 'Failed to verify token'
+                }, status=401)
+            
+            user_data = response.json()
+            email = user_data.get('email')
+            
             if not email:
-                return Response({'status': 'error', 'message': 'No email in token'}, status=400)
+                return Response({
+                    'status': 'error', 
+                    'message': 'No email in token'
+                }, status=400)
 
-          
+            # Get or create user
             user, created = User.objects.get_or_create(
                 email=email,
                 defaults={'username': email.split('@')[0]}
             )
 
+            # Create your own JWT token
             access_token = pyjwt.encode({
                 'user_id': user.id,
                 'email': user.email,
@@ -127,7 +134,13 @@ class RegisterView(APIView):
             }, status=201 if created else 200)
 
         except Exception as e:
+            print(f"Register error: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return Response({
                 'status': 'error',
                 'message': str(e)
             }, status=401)
+
+
+  

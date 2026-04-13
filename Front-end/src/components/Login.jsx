@@ -1,57 +1,19 @@
 import { useState } from "react";
-import { login, register } from "../services/api";
+import { useNavigate } from "react-router-dom";
 
-export default function LoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+
+export default function Login({ onLogin }) {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function handleLogin(e) {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    try {
-      const loginResponse = await login(email, password);
-      const loginData = loginResponse.data;
-
-      if (loginData.status === "error") {
-        setError(loginData.message || "Login failed");
-        return;
-      }
-
-      const auth0Token = loginData.data.access_token;
-
-      const registerResponse = await register(auth0Token);
-      const registerData = registerResponse.data;
-
-      if (registerData.status === "error") {
-        setError(registerData.message || "Registration failed");
-        return;
-      }
-
-      localStorage.setItem("access_token", registerData.access_token);
-      localStorage.setItem("email", registerData.email);
-
-      alert(`Welcome, ${registerData.email}`);
-    } catch (err) {
-      console.error("Login error:", err);
-      setError(
-        err.response?.data?.message ||
-          "Something went wrong. Please try again.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  function handleGoogle() {
+  function handleGoogleLogin() {
     const domain = "dev-zg54pxgt5z5cithx.us.auth0.com";
     const clientId = "7gZpLBI7a7nGsM11zRczrJBZja3dz41d";
     const redirectUri = encodeURIComponent("http://localhost:5173/callback");
-    const audience = encodeURIComponent("https://checklist-api.com");
-    window.location.href = `https://${domain}/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=openid%20profile%20email&connection=google-oauth2&audience=${audience}`;
+
+    // Redirect to Auth0's login page
+    window.location.href = `https://${domain}/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=openid%20profile%20email&connection=google-oauth2`;
   }
 
   return (
@@ -59,57 +21,22 @@ export default function LoginPage() {
       <div style={styles.overlay}>
         <div style={styles.card}>
           <div style={styles.header}>
-            <h1 style={styles.title}>Welcome</h1>
+            <h1 style={styles.title}>Welcome Back</h1>
             <p style={styles.subtitle}>Sign in to continue to Checklist App</p>
           </div>
 
-          {error && <div style={styles.error}>{error}</div>}
-
-          <form onSubmit={handleLogin} style={styles.form}>
-            <div style={styles.field}>
-              <label style={styles.label}>Email Address</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-                style={styles.input}
-              />
+          {error && (
+            <div style={styles.error}>
+              {error}
+              <button onClick={() => setError("")}>✕</button>
             </div>
+          )}
 
-            <div style={styles.field}>
-              <label style={styles.label}>Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                style={styles.input}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                ...styles.button,
-                opacity: loading ? 0.7 : 1,
-                cursor: loading ? "not-allowed" : "pointer",
-              }}
-            >
-              {loading ? "Signing in..." : "Sign in"}
-            </button>
-          </form>
-
-          <div style={styles.dividerRow}>
-            <div style={styles.dividerLine} />
-            <span style={styles.dividerText}>or continue with</span>
-            <div style={styles.dividerLine} />
-          </div>
-
-          <button onClick={handleGoogle} style={styles.googleButton}>
+          <button
+            onClick={handleGoogleLogin}
+            disabled={loading}
+            style={styles.googleButton}
+          >
             <svg
               width="18"
               height="18"
@@ -133,15 +60,8 @@ export default function LoginPage() {
                 fill="#EA4335"
               />
             </svg>
-            Google
+            Sign in with Google
           </button>
-
-          <p style={styles.footer}>
-            Don't have an account?{" "}
-            <a href="/register" style={styles.link}>
-              Sign up
-            </a>
-          </p>
         </div>
       </div>
     </div>
@@ -157,7 +77,9 @@ const styles = {
     bottom: 0,
     width: "100%",
     height: "100%",
-    background: "linear-gradient(135deg, #050608 0%, #d2bfe6 100%)",
+    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    fontFamily:
+      "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   },
   overlay: {
     position: "absolute",
@@ -169,91 +91,46 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    padding: "20px",
   },
   card: {
-    backgroundColor: "white",
-    borderRadius: 24,
-    padding: "40px",
+    background: "white",
+    borderRadius: "24px",
+    padding: "48px 40px",
     width: "100%",
-    maxWidth: 440,
-    boxShadow: "0 20px 35px rgba(0, 0, 0, 0.2)",
-    margin: "20px",
+    maxWidth: "440px",
+    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+    animation: "fadeInUp 0.5s ease-out",
   },
   header: {
     textAlign: "center",
     marginBottom: "32px",
   },
   title: {
-    fontSize: 32,
-    fontWeight: 600,
+    fontSize: "32px",
+    fontWeight: 700,
     margin: "0 0 8px",
-    color: "#1a1a1a",
+    background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    WebkitBackgroundClip: "text",
+    WebkitTextFillColor: "transparent",
+    backgroundClip: "text",
   },
   subtitle: {
-    fontSize: 14,
-    color: "#666",
+    fontSize: "14px",
+    color: "#6b7280",
     margin: 0,
   },
   error: {
     backgroundColor: "#fee2e2",
     color: "#dc2626",
-    fontSize: 13,
+    fontSize: "13px",
     padding: "12px 16px",
-    borderRadius: 12,
-    marginBottom: "20px",
+    borderRadius: "12px",
+    marginBottom: "24px",
     border: "1px solid #fecaca",
-  },
-  form: {
     display: "flex",
-    flexDirection: "column",
-    gap: 20,
-  },
-  field: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 8,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: 500,
-    color: "#333",
-  },
-  input: {
-    padding: "12px 14px",
-    fontSize: 14,
-    border: "1px solid #d1d5db",
-    borderRadius: 12,
-    outline: "none",
-    backgroundColor: "#fff",
-    color: "#1a1a1a",
-    fontWeight: "normal",
-    transition: "all 0.2s",
-  },
-  button: {
-    marginTop: 8,
-    padding: "12px",
-    fontSize: 15,
-    fontWeight: 600,
-    backgroundColor: "#1a1a1a",
-    color: "#fff",
-    border: "none",
-    borderRadius: 12,
-    width: "100%",
-  },
-  dividerRow: {
-    display: "flex",
+    justifyContent: "space-between",
     alignItems: "center",
-    gap: 12,
-    margin: "24px 0 20px",
-  },
-  dividerLine: {
-    flex: 1,
-    height: "1px",
-    backgroundColor: "#e5e7eb",
-  },
-  dividerText: {
-    fontSize: 12,
-    color: "#9ca3af",
   },
   googleButton: {
     display: "flex",
@@ -261,25 +138,40 @@ const styles = {
     justifyContent: "center",
     width: "100%",
     padding: "12px",
-    fontSize: 14,
+    fontSize: "14px",
     fontWeight: 500,
     backgroundColor: "#fff",
-    color: "#333",
-    border: "1px solid #d1d5db",
-    borderRadius: 12,
+    color: "#374151",
+    border: "1.5px solid #e5e7eb",
+    borderRadius: "12px",
     cursor: "pointer",
     transition: "all 0.2s",
   },
-  footer: {
-    textAlign: "center",
-    fontSize: 13,
-    color: "#666",
-    marginTop: 24,
-    marginBottom: 0,
-  },
-  link: {
-    color: "#2563eb",
-    textDecoration: "none",
-    fontWeight: 500,
-  },
 };
+
+
+if (typeof document !== "undefined") {
+  const styleSheet = document.createElement("style");
+  styleSheet.textContent = `
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    button:hover {
+      transform: translateY(-1px);
+    }
+    
+    .google-button:hover {
+      background-color: #f9fafb;
+      border-color: #667eea;
+    }
+  `;
+  document.head.appendChild(styleSheet);
+}
