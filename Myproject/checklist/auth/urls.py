@@ -1,6 +1,4 @@
-# checklist/auth/urls.py
 
-# checklist/auth/urls.py
 from django.urls import path
 from .views import Auth0LoginView, Auth0UserView, RegisterView
 

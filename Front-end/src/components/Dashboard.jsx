@@ -336,9 +336,7 @@ export default function Dashboard({ onLogout }) {
           </div>
         </div>
       ) : (
-        // ============================================
-        // ITEMS VIEW
-        // ============================================
+        
         <div style={styles.card}>
           <div style={styles.cardHeader}>
             <div style={styles.cardTitleSection}>
@@ -665,7 +663,7 @@ const styles = {
     padding: "4px 12px",
     borderRadius: "20px",
   },
-  // ✅ ITO ANG STYLE NG DELETE BUTTON PARA SA CHECKLIST
+ 
   deleteChecklistBtn: {
     padding: "6px 14px",
     background: "#dc2626",

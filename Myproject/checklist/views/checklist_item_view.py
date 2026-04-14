@@ -20,7 +20,7 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
         context = super().get_serializer_context()
         return context
 
-    # ✅ Override create method
+    
     def create(self, request, *args, **kwargs):
         """POST /api/checklist/{checklist_pk}/items/"""
         checklist_pk = self.kwargs.get('checklist_pk')
@@ -54,7 +54,7 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    # ✅ Override list method
+  
     def list(self, request, *args, **kwargs):
         """GET /api/checklist/{checklist_pk}/items/"""
         checklist_pk = self.kwargs.get('checklist_pk')
@@ -76,7 +76,7 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    # ✅ Override retrieve method
+    
     def retrieve(self, request, *args, **kwargs):
         """GET /api/checklist/{checklist_pk}/items/{pk}/"""
         checklist_pk = self.kwargs.get('checklist_pk')
@@ -99,7 +99,6 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(item)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    # ✅ Override update method
     def update(self, request, *args, **kwargs):
         """PUT/PATCH /api/checklist/{checklist_pk}/items/{pk}/"""
         checklist_pk = self.kwargs.get('checklist_pk')
@@ -136,7 +135,7 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    # ✅ Override destroy method
+    
     def destroy(self, request, *args, **kwargs):
         """DELETE /api/checklist/{checklist_pk}/items/{pk}/"""
         checklist_pk = self.kwargs.get('checklist_pk')

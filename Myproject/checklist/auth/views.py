@@ -92,7 +92,7 @@ class RegisterView(APIView):
             }, status=400)
 
         try:
-            # ✅ Use Auth0's UserInfo endpoint (bypasses JWT decoding issues)
+            
             userinfo_url = f'https://{settings.AUTH0_DOMAIN}/userinfo'
             headers = {'Authorization': f'Bearer {credential}'}
             
@@ -114,13 +114,13 @@ class RegisterView(APIView):
                     'message': 'No email in token'
                 }, status=400)
 
-            # Get or create user
+            
             user, created = User.objects.get_or_create(
                 email=email,
                 defaults={'username': email.split('@')[0]}
             )
 
-            # Create your own JWT token
+            
             access_token = pyjwt.encode({
                 'user_id': user.id,
                 'email': user.email,

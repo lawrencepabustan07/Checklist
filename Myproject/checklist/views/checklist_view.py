@@ -1,4 +1,4 @@
-# checklist/views/checklist_view.py
+
 
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import viewsets, status
