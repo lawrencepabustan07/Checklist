@@ -15,7 +15,7 @@ class Auth0Authentication(BaseAuthentication):
 
         token = auth_header.split(' ')[1]
 
-        # Try to decode as your own JWT first
+      
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
             user = User.objects.get(id=payload['user_id'])
@@ -25,7 +25,7 @@ class Auth0Authentication(BaseAuthentication):
         except (jwt.InvalidTokenError, User.DoesNotExist, KeyError):
             pass
 
-        # If not your JWT, try to decode as Auth0 token
+        
         try:
             jwks_url = f'https://{settings.AUTH0_DOMAIN}/.well-known/jwks.json'
             jwks_client = jwt.PyJWKClient(jwks_url)
@@ -39,7 +39,7 @@ class Auth0Authentication(BaseAuthentication):
                 issuer=f'https://{settings.AUTH0_DOMAIN}/'
             )
 
-            # ✅ FIX: Try multiple possible email locations
+           
             email = (
                 payload.get('email') or 
                 payload.get('https://checklist-api.com/email') or
