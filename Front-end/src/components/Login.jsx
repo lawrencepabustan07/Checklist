@@ -8,8 +8,8 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState("");
 
   function handleGoogleLogin() {
-    const domain = "dev-zg54pxgt5z5cithx.us.auth0.com";
-    const clientId = "7gZpLBI7a7nGsM11zRczrJBZja3dz41d";
+    const domain = import.meta.env.VITE_AUTH0_DOMAIN;
+    const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
     const redirectUri = encodeURIComponent("http://localhost:5173/callback");
 
     // Redirect to Auth0's login page

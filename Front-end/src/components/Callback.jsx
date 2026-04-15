@@ -36,7 +36,7 @@ export default function Callback() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             grant_type: "authorization_code",
-            client_id: "7gZpLBI7a7nGsM11zRczrJBZja3dz41d",
+            client_id: import.meta.env.VITE_AUTH0_CLIENT_ID,
             client_secret: import.meta.env.VITE_AUTH0_CLIENT_SECRET,
             code: code,
             redirect_uri: "http://localhost:5173/callback",
