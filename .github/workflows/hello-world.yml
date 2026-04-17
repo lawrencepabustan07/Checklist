@@ -1,4 +1,4 @@
-name: Hello World Workflow
+name: Backend Tests Workflow
 
 on:
   push:
@@ -6,11 +6,23 @@ on:
       - main
 
 jobs:
-  say-hello:
+  run-tests:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Print Hello World
-        run: echo "Hello, World! Push detected!"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        working-directory: Myproject
+        run: |
+          python -m pip install --upgrade pip
+          pip install django djangorestframework djangorestframework-simplejwt django-cors-headers pyjwt requests
+
+      - name: Run backend tests
+        working-directory: Myproject
+        run: python manage.py test checklist
