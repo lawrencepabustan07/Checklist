@@ -31,7 +31,7 @@ class ChecklistViewSet(viewsets.ModelViewSet):
                 'status': 'success',
                 'message': 'Checklist created successfully',
                 'data': serializer.data
-            }, status=status.HTTP_200_OK)
+            }, status=status.HTTP_201_CREATED)
 
         return Response({
             'status': 'error',

@@ -1,0 +1,26 @@
+# .coveragerc
+[run]
+source = checklist
+omit =
+    */migrations/*
+    */tests/*
+    */admin.py
+    */apps.py
+    manage.py
+    */settings/*
+    */wsgi.py
+    */asgi.py
+    */auth/migrations/*
+    */auth/tests/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    pass
+
+[html]
+directory = coverage_html_report
