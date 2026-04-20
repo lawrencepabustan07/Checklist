@@ -1,0 +1,16 @@
+# Myproject/.coveragerc
+[run]
+source = checklist
+omit =
+    */migrations/*
+    */tests/*
+    */admin.py
+    */apps.py
+    manage.py
+
+[report]
+show_missing = True
+skip_covered = False
+
+[html]
+directory = htmlcov

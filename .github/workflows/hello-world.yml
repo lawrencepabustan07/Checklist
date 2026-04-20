@@ -2,15 +2,16 @@ name: Backend Tests Workflow
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
-  run-tests:
+  test:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -18,11 +19,27 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        working-directory: Myproject
+        working-directory: ./Myproject
         run: |
           python -m pip install --upgrade pip
-          pip install django djangorestframework djangorestframework-simplejwt django-cors-headers pyjwt requests
+          pip install django djangorestframework djangorestframework-simplejwt django-cors-headers pyjwt requests coverage
 
-      - name: Run backend tests
-        working-directory: Myproject
+      - name: Run tests
+        working-directory: ./Myproject
         run: python manage.py test checklist
+
+      - name: Run coverage
+        working-directory: ./Myproject
+        run: |
+          coverage run --source='checklist' --omit='*/migrations/*,*/tests/*,*/admin.py,*/apps.py' manage.py test checklist
+          coverage report -m
+
+      - name: Generate HTML report
+        working-directory: ./Myproject
+        run: coverage html
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: Myproject/htmlcov/
