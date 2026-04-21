@@ -5,4 +5,4 @@ class ChecklistItemSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ChecklistItem
-        fields = ['id', 'label', 'type']
+        fields = ['id', 'label', 'type', 'is_completed', 'position']

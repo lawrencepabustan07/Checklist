@@ -1,12 +1,48 @@
 import jwt as pyjwt
+import os
 from datetime import datetime, timedelta
+from django.core.files.uploadedfile import UploadedFile
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 import requests
 from django.conf import settings
 from django.contrib.auth.models import User
+from checklist.models import UserProfile
+
+
+DEFAULT_AVATAR_URL = f"{settings.MEDIA_URL}profiles/default-avatar.svg"
+
+
+def get_or_create_profile(user):
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    return profile
+
+
+def get_avatar_url(request, profile):
+    avatar_url = profile.avatar.url if profile.avatar else DEFAULT_AVATAR_URL
+    return request.build_absolute_uri(avatar_url)
+
+
+def validate_avatar(file: UploadedFile | None):
+    if not file:
+        return None
+
+    max_size = 2 * 1024 * 1024
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".webp"}
+    allowed_content_types = {"image/jpeg", "image/png", "image/webp"}
+    extension = os.path.splitext(file.name)[1].lower()
+
+    if extension not in allowed_extensions:
+        return "Only JPG, PNG, and WEBP images are allowed."
+    if getattr(file, "size", 0) > max_size:
+        return "Image must be 2MB or smaller."
+    if getattr(file, "content_type", None) and file.content_type not in allowed_content_types:
+        return "Only JPG, PNG, and WEBP images are allowed."
+    return None
+
 class Auth0LoginView(APIView):
     """
     POST /api/auth/login/
@@ -59,15 +95,47 @@ class Auth0UserView(APIView):
     GET /api/auth/user/
     """
     permission_classes = [IsAuthenticated] 
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
     
     def get(self, request):
-       
+        profile = get_or_create_profile(request.user)
         return Response({
             'status': 'success',
             'data': {
                 'id': request.user.id,
                 'email': request.user.email,
-                
+                'avatar_url': get_avatar_url(request, profile),
+            }
+        }, status=200)
+
+    def patch(self, request):
+        profile = get_or_create_profile(request.user)
+        remove_avatar = str(request.data.get('remove_avatar', '')).lower() == 'true'
+        avatar = request.FILES.get('avatar')
+
+        validation_error = validate_avatar(avatar)
+        if validation_error:
+            return Response({
+                'status': 'error',
+                'errors': {'avatar': [validation_error]}
+            }, status=400)
+
+        old_avatar = profile.avatar
+        if remove_avatar:
+            profile.avatar = None
+        elif avatar:
+            profile.avatar = avatar
+
+        profile.save()
+        if old_avatar and (remove_avatar or avatar) and old_avatar.name != getattr(profile.avatar, 'name', None):
+            old_avatar.delete(save=False)
+
+        return Response({
+            'status': 'success',
+            'data': {
+                'id': request.user.id,
+                'email': request.user.email,
+                'avatar_url': get_avatar_url(request, profile),
             }
         }, status=200)
 
@@ -119,6 +187,7 @@ class RegisterView(APIView):
                 email=email,
                 defaults={'username': email.split('@')[0]}
             )
+            get_or_create_profile(user)
 
             
             access_token = pyjwt.encode({

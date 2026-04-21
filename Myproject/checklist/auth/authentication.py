@@ -3,6 +3,7 @@ from rest_framework.exceptions import AuthenticationFailed
 import jwt
 from django.contrib.auth.models import User
 from django.conf import settings
+from checklist.models import UserProfile
 
 
 class Auth0Authentication(BaseAuthentication):
@@ -19,6 +20,7 @@ class Auth0Authentication(BaseAuthentication):
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
             user = User.objects.get(id=payload['user_id'])
+            UserProfile.objects.get_or_create(user=user)
             return (user, token)
         except jwt.ExpiredSignatureError:
             raise AuthenticationFailed('Token expired')
@@ -53,6 +55,7 @@ class Auth0Authentication(BaseAuthentication):
                 email=email,
                 defaults={'username': email.split('@')[0]}
             )
+            UserProfile.objects.get_or_create(user=user)
             return (user, token)
 
         except jwt.ExpiredSignatureError:

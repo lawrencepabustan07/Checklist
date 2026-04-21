@@ -1,6 +1,6 @@
-
-
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from ..models import Checklist
@@ -11,9 +11,14 @@ class ChecklistViewSet(viewsets.ModelViewSet):
     queryset = Checklist.objects.all()
     serializer_class = ChecklistSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
-        return Checklist.objects.filter(created_by=self.request.user)
+        include_archived = self.request.query_params.get('archived') == 'true'
+        queryset = Checklist.objects.filter(created_by=self.request.user)
+        if not include_archived:
+            queryset = queryset.filter(is_archived=False)
+        return queryset
 
     def create(self, request, *args, **kwargs):
         name = request.data.get('name')
@@ -108,5 +113,40 @@ class ChecklistViewSet(viewsets.ModelViewSet):
                 'message': 'Checklist not found'
             }, status=status.HTTP_404_NOT_FOUND)
 
-        instance.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        instance.is_archived = True
+        instance.save(update_fields=['is_archived'])
+        serializer = self.get_serializer(instance)
+        return Response({
+            'status': 'success',
+            'message': 'Checklist archived successfully',
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='archived')
+    def archived(self, request):
+        queryset = Checklist.objects.filter(created_by=request.user, is_archived=True)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            'status': 'success',
+            'count': queryset.count(),
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='restore')
+    def restore(self, request, pk=None):
+        try:
+            instance = Checklist.objects.get(pk=pk, created_by=request.user)
+        except Checklist.DoesNotExist:
+            return Response({
+                'status': 'error',
+                'message': 'Checklist not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        instance.is_archived = False
+        instance.save(update_fields=['is_archived'])
+        serializer = self.get_serializer(instance)
+        return Response({
+            'status': 'success',
+            'message': 'Checklist restored successfully',
+            'data': serializer.data
+        }, status=status.HTTP_200_OK)

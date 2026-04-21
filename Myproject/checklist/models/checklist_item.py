@@ -8,9 +8,11 @@ class ChecklistItem(models.Model):
         checklist = models.ForeignKey(Checklist, on_delete=models.CASCADE, related_name='items')
         label = models.CharField(max_length=255)
         type = models.CharField(max_length=200)
+        is_completed = models.BooleanField(default=False)
+        position = models.PositiveIntegerField(default=0)
         
         class Meta:
-            ordering = ['id']
+            ordering = ['position', 'id']
             constraints = [
                 models.UniqueConstraint(fields=['checklist', 'label'], name='unique_item_per_checklist')
             ]

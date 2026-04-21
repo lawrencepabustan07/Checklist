@@ -7,4 +7,4 @@ class ChecklistItemDetailSerializer(serializers.ModelSerializer):
             checklist__type = serializers.CharField(source='checklist.type', read_only=True)
             class Meta:
                 model = ChecklistItem
-                fields = ['id', 'checklist', 'checklist__name', 'checklist__type', 'label', 'type']
+                fields = ['id', 'checklist', 'checklist__name', 'checklist__type', 'label', 'type', 'is_completed', 'position']

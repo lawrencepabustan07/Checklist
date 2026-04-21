@@ -24,11 +24,6 @@ export default function Callback() {
     }
 
     try {
-      console.log(
-        "Secret loaded:",
-        import.meta.env.VITE_AUTH0_CLIENT_SECRET ? "Yes" : "No",
-      );
-
       const tokenResponse = await fetch(
         `https://dev-zg54pxgt5z5cithx.us.auth0.com/oauth/token`,
         {
@@ -111,6 +106,7 @@ const styles = {
   },
 };
 
+/* v8 ignore next -- DOM-only style injection */
 if (typeof document !== "undefined") {
   const style = document.createElement("style");
   style.textContent = `@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`;

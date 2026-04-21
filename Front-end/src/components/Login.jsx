@@ -5,7 +5,6 @@ import { useNavigate } from "react-router-dom";
 export default function Login({ onLogin }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
 
   function handleGoogleLogin() {
     const domain = import.meta.env.VITE_AUTH0_DOMAIN;
@@ -24,13 +23,6 @@ export default function Login({ onLogin }) {
             <h1 style={styles.title}>Welcome Back</h1>
             <p style={styles.subtitle}>Sign in to continue to Checklist App</p>
           </div>
-
-          {error && (
-            <div style={styles.error}>
-              {error}
-              <button onClick={() => setError("")}>✕</button>
-            </div>
-          )}
 
           <button
             onClick={handleGoogleLogin}
@@ -150,6 +142,7 @@ const styles = {
 };
 
 
+/* v8 ignore next -- DOM-only style injection */
 if (typeof document !== "undefined") {
   const styleSheet = document.createElement("style");
   styleSheet.textContent = `

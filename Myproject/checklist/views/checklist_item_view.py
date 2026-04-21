@@ -1,11 +1,11 @@
 # checklist/views/checklistitems_view.py
-from rest_framework.decorators import action
+from django.db import IntegrityError, transaction
+from django.db.models import Max
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from ..models import ChecklistItem
-from ..models import Checklist
+from ..models import Checklist, ChecklistItem
 from ..serializers import ChecklistItemSerializer
-from django.db import IntegrityError
 from rest_framework.permissions import IsAuthenticated
 
 class ChecklistItemViewSet(viewsets.ModelViewSet):
@@ -14,11 +14,17 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return ChecklistItem.objects.filter(checklist__created_by=self.request.user)
+        return ChecklistItem.objects.filter(
+            checklist__created_by=self.request.user,
+            checklist__is_archived=False,
+        )
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
         return context
+
+    def _get_checklist(self, checklist_pk, user):
+        return Checklist.objects.get(pk=checklist_pk, created_by=user, is_archived=False)
 
     
     def create(self, request, *args, **kwargs):
@@ -31,7 +37,7 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            checklist = Checklist.objects.get(pk=checklist_pk)
+            checklist = self._get_checklist(checklist_pk, request.user)
         except Checklist.DoesNotExist:
             return Response({
                 'error': 'Checklist not found'
@@ -41,11 +47,14 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
         
         if serializer.is_valid():
             try:
-                item = serializer.save(checklist=checklist)
+                max_position = checklist.items.aggregate(max_position=Max('position'))['max_position'] or 0
+                item = serializer.save(checklist=checklist, position=max_position + 1)
                 return Response({
                     'id': str(item.id),
                     'label': item.label,
-                    'type': item.type
+                    'type': item.type,
+                    'is_completed': item.is_completed,
+                    'position': item.position,
                 }, status=status.HTTP_201_CREATED)
             except IntegrityError:
                 return Response({
@@ -65,7 +74,7 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            checklist = Checklist.objects.get(pk=checklist_pk)
+            checklist = self._get_checklist(checklist_pk, request.user)
         except Checklist.DoesNotExist:
             return Response({
                 'error': 'Checklist not found'
@@ -83,7 +92,7 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
         pk = self.kwargs.get('pk')
         
         try:
-            checklist = Checklist.objects.get(pk=checklist_pk)
+            checklist = self._get_checklist(checklist_pk, request.user)
         except Checklist.DoesNotExist:
             return Response({
                 'error': 'Checklist not found'
@@ -105,7 +114,7 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
         pk = self.kwargs.get('pk')
         
         try:
-            checklist = Checklist.objects.get(pk=checklist_pk)
+            checklist = self._get_checklist(checklist_pk, request.user)
         except Checklist.DoesNotExist:
             return Response({
                 'error': 'Checklist not found'
@@ -126,7 +135,9 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
                 return Response({
                     'id': str(item.id),
                     'label': item.label,
-                    'type': item.type
+                    'type': item.type,
+                    'is_completed': item.is_completed,
+                    'position': item.position,
                 }, status=status.HTTP_200_OK)
             except IntegrityError:
                 return Response({
@@ -142,7 +153,7 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
         pk = self.kwargs.get('pk')
         
         try:
-            checklist = Checklist.objects.get(pk=checklist_pk)
+            checklist = self._get_checklist(checklist_pk, request.user)
         except Checklist.DoesNotExist:
             return Response({
                 'error': 'Checklist not found'
@@ -157,3 +168,35 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
         
         item.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['post'], url_path='reorder')
+    def reorder(self, request, checklist_pk=None):
+        try:
+            checklist = self._get_checklist(checklist_pk, request.user)
+        except Checklist.DoesNotExist:
+            return Response({
+                'error': 'Checklist not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        ordered_ids = request.data.get('ordered_ids', [])
+        if not isinstance(ordered_ids, list):
+            return Response({
+                'error': 'ordered_ids must be a list'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        items = list(checklist.items.all())
+        existing_ids = {str(item.id) for item in items}
+        if set(ordered_ids) != existing_ids:
+            return Response({
+                'error': 'ordered_ids must include every item in the checklist exactly once'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        items_by_id = {str(item.id): item for item in items}
+        with transaction.atomic():
+            for index, item_id in enumerate(ordered_ids, start=1):
+                item = items_by_id[item_id]
+                item.position = index
+                item.save(update_fields=['position'])
+
+        serializer = self.get_serializer(checklist.items.all(), many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
