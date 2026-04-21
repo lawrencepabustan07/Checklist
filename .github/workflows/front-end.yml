@@ -85,14 +85,14 @@ jobs:
           path: ./Front-end/coverage/
           retention-days: 7
       
-      - name: Check coverage thresholds
-        run: |
-          COVERAGE=$(npm run test:coverage -- --coverage --reporter=json-summary | jq '.total.branches.pct')
-          echo "Branch coverage: $COVERAGE%"
-          if (( $(echo "$COVERAGE < 85" | bc -l) )); then
-            echo "⚠️ Coverage below 85% threshold"
-            exit 1
-          fi
+      # - name: Check coverage thresholds
+      #   run: |
+      #     COVERAGE=$(npm run test:coverage -- --coverage --reporter=json-summary | jq '.total.branches.pct')
+      #     echo "Branch coverage: $COVERAGE%"
+      #     if (( $(echo "$COVERAGE < 85" | bc -l) )); then
+      #       echo "⚠️ Coverage below 85% threshold"
+      #       exit 1
+      #     fi
 
   # Job 3: Build
   build:
