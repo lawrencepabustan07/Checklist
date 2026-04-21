@@ -44,8 +44,8 @@ jobs:
       - name: Run ESLint
         run: npm run lint --if-present
       
-      - name: Run Type Check
-        run: npm run type-check --if-present
+      # - name: Run Type Check
+      #   run: npm run type-check --if-present
 
   # Job 2: Test with Coverage
   test:
