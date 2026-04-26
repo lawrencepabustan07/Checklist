@@ -194,5 +194,6 @@ describe("Dashboard helpers", () => {
       best_day: null,
       heatmap: {},
     });
+    expect(createEmptyAnalytics()).not.toHaveProperty("weekly_activity");
   });
 });

@@ -675,12 +675,7 @@ export default function Dashboard({ onLogout }) {
   }
 
   function renderAnalyticsBlock(data, global = false) {
-    const weeklyEntries = Object.entries(data.weekly_activity || {});
     const heatmapEntries = Object.entries(data.heatmap || {});
-    const maxWeeklyValue = Math.max(
-      ...weeklyEntries.map(([, value]) => value),
-      1,
-    );
     const maxHeat = Math.max(...heatmapEntries.map(([, value]) => value), 1);
 
     return (
@@ -722,21 +717,6 @@ export default function Dashboard({ onLogout }) {
             </p>
           </div>
           <div style={styles(theme).chartCard}>
-            <h3 style={styles(theme).chartTitle}>Weekly Activity</h3>
-            <div style={styles(theme).barChart}>
-              {weeklyEntries.map(([day, value]) => (
-                <div key={day} style={styles(theme).barColumn}>
-                  <div
-                    style={styles(theme).bar(
-                      `${Math.max((value / maxWeeklyValue) * 100, value ? 18 : 6)}%`,
-                    )}
-                  />
-                  <span style={styles(theme).barLabel}>{day}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div style={styles(theme).chartCardWide}>
             <h3 style={styles(theme).chartTitle}>Activity Heatmap</h3>
             <div style={styles(theme).heatmap}>
               {heatmapEntries.length === 0 ? (
@@ -846,7 +826,6 @@ export default function Dashboard({ onLogout }) {
               {
                 ...createEmptyAnalytics(),
                 ...dashboardAnalytics,
-                weekly_activity: checklistAnalytics.weekly_activity,
                 heatmap: checklistAnalytics.heatmap,
                 best_day: checklistAnalytics.best_day,
               },
@@ -1952,13 +1931,6 @@ function styles(theme) {
       background: theme.panelAlt,
       border: `1px solid ${theme.border}`,
     },
-    chartCardWide: {
-      padding: "18px",
-      borderRadius: "18px",
-      background: theme.panelAlt,
-      border: `1px solid ${theme.border}`,
-      gridColumn: "span 2",
-    },
     chartTitle: {
       margin: "0 0 14px",
       fontSize: "16px",
@@ -1978,30 +1950,6 @@ function styles(theme) {
       background: `linear-gradient(90deg, ${theme.accent}, ${theme.warning})`,
       borderRadius: "999px",
     }),
-    barChart: {
-      display: "grid",
-      gridTemplateColumns: "repeat(7, 1fr)",
-      gap: "10px",
-      alignItems: "end",
-      minHeight: "160px",
-    },
-    barColumn: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: "8px",
-      justifyContent: "flex-end",
-    },
-    bar: (height) => ({
-      width: "100%",
-      minHeight: height,
-      background: `linear-gradient(180deg, ${theme.accent}, ${theme.accentSoft})`,
-      borderRadius: "14px 14px 8px 8px",
-    }),
-    barLabel: {
-      fontSize: "12px",
-      color: theme.muted,
-    },
     heatmap: {
       display: "flex",
       gap: "10px",

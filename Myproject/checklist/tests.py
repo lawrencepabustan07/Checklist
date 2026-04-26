@@ -1027,7 +1027,7 @@ class ChecklistItemApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["total_items"], 1)
         self.assertEqual(response.data["completed_items"], 1)
-        self.assertIn("weekly_activity", response.data)
+        self.assertNotIn("weekly_activity", response.data)
 
 
 class DashboardAnalyticsApiTests(APITestCase):

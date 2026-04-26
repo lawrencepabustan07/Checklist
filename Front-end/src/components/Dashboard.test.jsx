@@ -79,15 +79,6 @@ function setupDefaultMocks({
       pending_items: 1,
       overdue_items: 0,
       completion_rate: 0,
-      weekly_activity: {
-        Mon: 0,
-        Tue: 0,
-        Wed: 0,
-        Thu: 0,
-        Fri: 0,
-        Sat: 0,
-        Sun: 0,
-      },
       best_day: null,
       heatmap: {},
       priority_breakdown: [],
@@ -466,15 +457,6 @@ describe("Dashboard", () => {
           pending_items: 1,
           overdue_items: 0,
           completion_rate: 50,
-          weekly_activity: {
-            Mon: 1,
-            Tue: 0,
-            Wed: 0,
-            Thu: 0,
-            Fri: 0,
-            Sat: 0,
-            Sun: 0,
-          },
           best_day: "Mon",
           heatmap: { "2026-04-26": 2 },
           priority_breakdown: [],
@@ -485,6 +467,7 @@ describe("Dashboard", () => {
     await user.click(await screen.findByText("Daily Setup"));
     await screen.findByText("Brush teeth");
 
+    expect(screen.getByText("Best Day")).toBeInTheDocument();
     expect(screen.getAllByText("Mon").length).toBeGreaterThan(0);
     expect(screen.getByText("04-26")).toBeInTheDocument();
   });

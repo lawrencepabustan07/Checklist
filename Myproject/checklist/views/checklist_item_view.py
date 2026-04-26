@@ -299,7 +299,6 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
                 "priority_breakdown": list(
                     items.values("priority").annotate(count=Count("id")).order_by("priority")
                 ),
-                "weekly_activity": week_counts,
                 "best_day": best_day,
                 "heatmap": heatmap,
             },
