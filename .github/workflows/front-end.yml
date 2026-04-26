@@ -10,6 +10,7 @@ on:
     branches: [ main, develop ]
     paths:
       - 'Front-end/**'
+      - '.github/workflows/front-end.yml'
 
 # Cancel previous runs on same branch
 concurrency:
@@ -42,8 +43,7 @@ jobs:
         run: npm ci
       
       - name: Run ESLint
-        run: npm run lint || true
-        continue-on-error: true
+        run: npm run lint
 
   # Job 2: Test with Coverage
   test:

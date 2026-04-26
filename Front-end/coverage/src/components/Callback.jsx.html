@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>29/29</span>
+                <span class='fraction'>30/30</span>
             </div>
         
             
@@ -177,7 +177,9 @@
 <a name='L112'></a><a href='#L112'>112</a>
 <a name='L113'></a><a href='#L113'>113</a>
 <a name='L114'></a><a href='#L114'>114</a>
-<a name='L115'></a><a href='#L115'>115</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L115'></a><a href='#L115'>115</a>
+<a name='L116'></a><a href='#L116'>116</a>
+<a name='L117'></a><a href='#L117'>117</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -188,10 +190,9 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">5x</span>
-<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-yes">5x</span>
@@ -237,6 +238,9 @@
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">9x</span>
@@ -301,57 +305,59 @@ export default function Callback() {
   const called = useRef(false);
 &nbsp;
   useEffect(() =&gt; {
-    if (called.current) return;
-    called.current = true;
-    handleCallback();
-  }, []);
-&nbsp;
-  async function handleCallback() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get("code");
-&nbsp;
-    if (!code) {
-      setError("No authorization code received");
-      setTimeout(() =&gt; navigate("/login"), 3000);
+    if (called.current) {
       return;
     }
+    called.current = true;
+    async function handleCallback() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get("code");
 &nbsp;
-    try {
-      const tokenResponse = await fetch(
-        `https://dev-zg54pxgt5z5cithx.us.auth0.com/oauth/token`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            grant_type: "authorization_code",
-            client_id: import.meta.env.VITE_AUTH0_CLIENT_ID,
-            client_secret: import.meta.env.VITE_AUTH0_CLIENT_SECRET,
-            code: code,
-            redirect_uri: "http://localhost:5173/callback",
-          }),
-        },
-      );
-&nbsp;
-      const tokenData = await tokenResponse.json();
-&nbsp;
-      if (!tokenResponse.ok) {
-        throw new Error(tokenData.error_description || "Token exchange failed");
+      if (!code) {
+        setError("No authorization code received");
+        setTimeout(() =&gt; navigate("/login"), 3000);
+        return;
       }
 &nbsp;
-      const cleanToken = String(tokenData.access_token).trim();
-      const registerResponse = await register(cleanToken);
-      const registerData = registerResponse.data;
+      try {
+        const tokenResponse = await fetch(
+          `https://dev-zg54pxgt5z5cithx.us.auth0.com/oauth/token`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              grant_type: "authorization_code",
+              client_id: import.meta.env.VITE_AUTH0_CLIENT_ID,
+              client_secret: import.meta.env.VITE_AUTH0_CLIENT_SECRET,
+              code,
+              redirect_uri: "http://localhost:5173/callback",
+            }),
+          },
+        );
 &nbsp;
-      localStorage.setItem("access_token", registerData.access_token);
-      localStorage.setItem("email", registerData.email);
+        const tokenData = await tokenResponse.json();
 &nbsp;
-      navigate("/dashboard");
-    } catch (err) {
-      console.error("Callback error:", err);
-      setError(err.message);
-      setTimeout(() =&gt; navigate("/login"), 3000);
+        if (!tokenResponse.ok) {
+          throw new Error(tokenData.error_description || "Token exchange failed");
+        }
+&nbsp;
+        const cleanToken = String(tokenData.access_token).trim();
+        const registerResponse = await register(cleanToken);
+        const registerData = registerResponse.data;
+&nbsp;
+        localStorage.setItem("access_token", registerData.access_token);
+        localStorage.setItem("email", registerData.email);
+&nbsp;
+        navigate("/dashboard");
+      } catch (err) {
+        console.error("Callback error:", err);
+        setError(err.message);
+        setTimeout(() =&gt; navigate("/login"), 3000);
+      }
     }
-  }
+&nbsp;
+    handleCallback();
+  }, [navigate]);
 &nbsp;
   return (
     &lt;div style={styles.container}&gt;
@@ -412,7 +418,7 @@ if (typeof document !== "undefined") {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-04-26T18:27:29.723Z
+                at 2026-04-26T18:59:45.064Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
