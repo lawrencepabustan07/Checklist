@@ -10,17 +10,38 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import os
+import secrets
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def load_or_create_secret_key():
+    env_secret = os.getenv("DJANGO_SECRET_KEY")
+    if env_secret:
+        return env_secret
+
+    secret_file = BASE_DIR / ".django-secret-key"
+    if secret_file.exists():
+        stored_secret = secret_file.read_text(encoding="utf-8").strip()
+        if stored_secret:
+            return stored_secret
+
+    generated_secret = secrets.token_urlsafe(50)
+    try:
+        secret_file.write_text(generated_secret, encoding="utf-8")
+    except OSError:
+        pass
+    return generated_secret
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-&l=***y#zmmqtjzfng0urm%jhz!a7!sy7koi)=j7hie0&*ry9t'
+SECRET_KEY = load_or_create_secret_key()
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -128,10 +149,10 @@ USE_I18N = True
 
 USE_TZ = True
 
-AUTH0_DOMAIN = "dev-zg54pxgt5z5cithx.us.auth0.com"  # Your domain
-AUTH0_CLIENT_ID = "7gZpLBI7a7nGsM11zRczrJBZja3dz41d"
-AUTH0_CLIENT_SECRET = "kQRLqeFfz7xU_aWi6ZnexCYQFZ9aWHNWBqoWcSZxeXW0FWC_xlu_s4rLgsKPoRkZ"
-AUTH0_AUDIENCE = "https://checklist-api.com"
+AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "dev-zg54pxgt5z5cithx.us.auth0.com")
+AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID", "7gZpLBI7a7nGsM11zRczrJBZja3dz41d")
+AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET", "")
+AUTH0_AUDIENCE = os.getenv("AUTH0_AUDIENCE", "https://checklist-api.com")
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/

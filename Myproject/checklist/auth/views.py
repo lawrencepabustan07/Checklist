@@ -14,6 +14,7 @@ from checklist.models import UserProfile
 
 
 DEFAULT_AVATAR_URL = f"{settings.MEDIA_URL}profiles/default-avatar.svg"
+AUTH0_REQUEST_TIMEOUT = 10
 
 
 def get_or_create_profile(user):
@@ -69,7 +70,8 @@ class Auth0LoginView(APIView):
                 'client_secret': settings.AUTH0_CLIENT_SECRET,
                 'audience': settings.AUTH0_AUDIENCE,
                 'scope': 'openid profile email'
-            }
+            },
+            timeout=AUTH0_REQUEST_TIMEOUT,
         )
         
         if response.status_code != 200:
@@ -182,7 +184,11 @@ class RegisterView(APIView):
             userinfo_url = f'https://{settings.AUTH0_DOMAIN}/userinfo'
             headers = {'Authorization': f'Bearer {credential}'}
             
-            response = requests.get(userinfo_url, headers=headers)
+            response = requests.get(
+                userinfo_url,
+                headers=headers,
+                timeout=AUTH0_REQUEST_TIMEOUT,
+            )
             
             if response.status_code != 200:
                 print(f"UserInfo error: {response.status_code} - {response.text}")
