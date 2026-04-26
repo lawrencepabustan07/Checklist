@@ -311,6 +311,21 @@ describe("Dashboard", () => {
     );
   });
 
+  it("shows an error for invalid replacement checklist images", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks();
+    renderDashboard();
+    await screen.findByText("Daily Setup");
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const fileInputs = document.querySelectorAll("input[type='file']");
+    fireEvent.change(fileInputs[fileInputs.length - 1], {
+      target: { files: [new File(["gif"], "bad.gif", { type: "image/gif" })] },
+    });
+
+    expect(await screen.findByText(/Only JPG, PNG, and WEBP/i)).toBeInTheDocument();
+  });
+
   it("shows checklist update errors", async () => {
     const user = userEvent.setup();
     setupDefaultMocks();
@@ -486,6 +501,104 @@ describe("Dashboard", () => {
     await waitFor(() => {
       expect(mockApi.patch).toHaveBeenCalledWith("/auth/user/", expect.any(FormData));
     });
+  });
+
+  it("ignores empty avatar selection and blocks invalid avatar files", async () => {
+    setupDefaultMocks();
+    renderDashboard();
+    await screen.findByText("Welcome back, lawrence");
+
+    const avatarInput = screen.getByLabelText("Change Avatar");
+    fireEvent.change(avatarInput, { target: { files: [] } });
+    expect(mockApi.patch).not.toHaveBeenCalled();
+
+    fireEvent.change(avatarInput, {
+      target: { files: [new File(["gif"], "avatar.gif", { type: "image/gif" })] },
+    });
+
+    expect(await screen.findByText(/Only JPG, PNG, and WEBP/i)).toBeInTheDocument();
+    expect(mockApi.patch).not.toHaveBeenCalled();
+  });
+
+  it("uploads an avatar and falls back to the default avatar when removed", async () => {
+    const user = userEvent.setup();
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:avatar-preview");
+    setupDefaultMocks();
+    mockApi.patch
+      .mockResolvedValueOnce({
+        data: {
+          data: { avatar_url: "http://example.com/new-avatar.png" },
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          data: { avatar_url: null },
+        },
+      });
+
+    renderDashboard();
+    await screen.findByText("Welcome back, lawrence");
+
+    const avatarInput = screen.getByLabelText("Change Avatar");
+    const file = new File(["img"], "avatar.png", { type: "image/png" });
+    fireEvent.change(avatarInput, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(mockApi.patch).toHaveBeenCalledWith("/auth/user/", expect.any(FormData));
+    });
+    expect(mockApi.patch.mock.calls[0][1].get("avatar")).toBe(file);
+    await waitFor(() => {
+      expect(screen.getByAltText("Profile avatar")).toHaveAttribute(
+        "src",
+        "http://example.com/new-avatar.png",
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    expect(mockApi.patch.mock.calls[1][1].get("remove_avatar")).toBe("true");
+    await waitFor(() => {
+      expect(screen.getByAltText("Profile avatar")).toHaveAttribute(
+        "src",
+        expect.stringContaining("default-avatar.svg"),
+      );
+    });
+  });
+
+  it("shows avatar upload API errors and generic fallback errors", async () => {
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:avatar-preview");
+    setupDefaultMocks();
+    mockApi.patch
+      .mockRejectedValueOnce({
+        response: { data: { errors: { avatar: ["Avatar rejected"] } } },
+      })
+      .mockRejectedValueOnce(new Error("boom"));
+
+    renderDashboard();
+    await screen.findByText("Welcome back, lawrence");
+
+    const avatarInput = screen.getByLabelText("Change Avatar");
+    fireEvent.change(avatarInput, {
+      target: { files: [new File(["img"], "avatar.png", { type: "image/png" })] },
+    });
+    expect(await screen.findByText("Avatar rejected")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "x" }));
+    fireEvent.change(avatarInput, {
+      target: { files: [new File(["img"], "avatar-2.png", { type: "image/png" })] },
+    });
+    expect(await screen.findByText("Failed to update avatar")).toBeInTheDocument();
+  });
+
+  it("shows an error when removing an avatar fails", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks();
+    mockApi.patch.mockRejectedValueOnce(new Error("fail"));
+
+    renderDashboard();
+    await screen.findByText("Welcome back, lawrence");
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+
+    expect(await screen.findByText("Failed to remove avatar")).toBeInTheDocument();
   });
 
   it("supports high contrast theme and default avatar fallback", async () => {
