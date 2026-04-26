@@ -54,7 +54,7 @@ jobs:
 
       - name: Install ESLint security plugins
         working-directory: Front-end
-        run: npm install --no-save eslint-plugin-no-secrets eslint-plugin-security
+        run: npm install --no-save eslint-plugin-no-secrets eslint-plugin-react eslint-plugin-security
 
       - name: Run ESLint security rules
         working-directory: Front-end

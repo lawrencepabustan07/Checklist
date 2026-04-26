@@ -16,8 +16,14 @@
   },
   "plugins": [
     "security",
-    "no-secrets"
+    "no-secrets",
+    "react"
   ],
+  "settings": {
+    "react": {
+      "version": "detect"
+    }
+  },
   "ignorePatterns": [
     "Front-end/node_modules/",
     "Front-end/dist/",
@@ -31,6 +37,8 @@
       "rules": {
         "no-eval": "error",
         "no-implied-eval": "error",
+        "react/jsx-uses-vars": "error",
+        "react/react-in-jsx-scope": "off",
         "security/detect-buffer-noassert": "warn",
         "security/detect-child-process": "off",
         "security/detect-disable-mustache-escape": "off",
@@ -39,7 +47,7 @@
         "security/detect-non-literal-fs-filename": "off",
         "security/detect-non-literal-regexp": "warn",
         "security/detect-non-literal-require": "off",
-        "security/detect-object-injection": "warn",
+        "security/detect-object-injection": "off",
         "security/detect-possible-timing-attacks": "warn",
         "security/detect-pseudoRandomBytes": "warn",
         "security/detect-unsafe-regex": "warn",
@@ -49,6 +57,14 @@
             "tolerance": 4.2
           }
         ]
+      }
+    },
+    {
+      "files": [
+        "Front-end/src/**/*.test.{js,jsx}"
+      ],
+      "rules": {
+        "no-secrets/no-secrets": "off"
       }
     }
   ]

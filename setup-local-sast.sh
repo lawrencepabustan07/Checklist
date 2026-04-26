@@ -21,7 +21,7 @@ python3 -m pip install pre-commit bandit semgrep
 
 echo "Installing frontend ESLint security plugins..."
 cd "${FRONTEND_DIR}"
-npm install --no-save eslint-plugin-no-secrets eslint-plugin-security
+npm install --no-save eslint-plugin-no-secrets eslint-plugin-react eslint-plugin-security
 
 echo "Installing pre-commit hooks..."
 cd "${ROOT_DIR}"
