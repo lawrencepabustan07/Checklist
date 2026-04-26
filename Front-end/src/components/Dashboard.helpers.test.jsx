@@ -26,7 +26,7 @@ import {
   normaliseCollection,
   resolveTheme,
   validateImageFile,
-} from "./Dashboard";
+} from "./dashboardHelpers";
 
 describe("Dashboard helpers", () => {
   beforeEach(() => {

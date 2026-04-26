@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint . --report-unused-disable-directives --max-warnings 1000 || true",
+    "lint": "eslint . --report-unused-disable-directives --max-warnings 1000",
     "lint:fix": "eslint . --fix",
     "preview": "vite preview",
     "test": "vitest run --config vitest.config.js",

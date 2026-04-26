@@ -242,7 +242,7 @@ describe("Dashboard", () => {
 
   it("accepts a valid checklist image for creation", async () => {
     const user = userEvent.setup();
-    global.URL.createObjectURL = vi.fn(() => "blob:cover-preview");
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:cover-preview");
     setupDefaultMocks();
     renderDashboard();
     await screen.findByText("Daily Setup");
@@ -303,7 +303,7 @@ describe("Dashboard", () => {
 
   it("accepts a valid replacement image while editing a checklist", async () => {
     const user = userEvent.setup();
-    global.URL.createObjectURL = vi.fn(() => "blob:edit-preview");
+    globalThis.URL.createObjectURL = vi.fn(() => "blob:edit-preview");
     setupDefaultMocks();
     renderDashboard();
     await screen.findByText("Daily Setup");

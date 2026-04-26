@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: bandit-backend
         name: Bandit backend security scan
-        entry: bandit -c .bandit -r Myproject/checklist Myproject/Myproject
+        entry: bandit --ini .bandit -r Myproject/checklist Myproject/Myproject
         language: system
         pass_filenames: false
         files: ^Myproject/.*\.py$
@@ -17,7 +17,7 @@ repos:
 
       - id: eslint-frontend-security
         name: ESLint frontend security rules
-        entry: sh -c 'cd Front-end && ESLINT_USE_FLAT_CONFIG=false npx eslint --config ../.eslintrc.json --ext .js,.jsx src'
+        entry: sh -c 'cd Front-end && ESLINT_USE_FLAT_CONFIG=false npx eslint --resolve-plugins-relative-to . --config ../.eslintrc.json --ext .js,.jsx src'
         language: system
         pass_filenames: false
         files: ^Front-end/src/.*\.(js|jsx)$

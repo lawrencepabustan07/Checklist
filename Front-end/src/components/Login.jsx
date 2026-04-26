@@ -1,10 +1,4 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-
-
-export default function Login({ onLogin }) {
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+export default function Login() {
 
   function handleGoogleLogin() {
     const domain = import.meta.env.VITE_AUTH0_DOMAIN;
@@ -26,7 +20,6 @@ export default function Login({ onLogin }) {
 
           <button
             onClick={handleGoogleLogin}
-            disabled={loading}
             style={styles.googleButton}
           >
             <svg

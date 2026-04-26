@@ -47,7 +47,7 @@ describe("Callback", () => {
 
   it("stores auth data and navigates to dashboard on successful callback", async () => {
     window.history.pushState({}, "", "/callback?code=abc123");
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ access_token: " external-token " }),
     });
@@ -75,7 +75,7 @@ describe("Callback", () => {
 
   it("shows fetch/register errors and redirects back to login", async () => {
     window.history.pushState({}, "", "/callback?code=bad-code");
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       json: async () => ({ error_description: "Token exchange failed hard" }),
     });
@@ -95,7 +95,7 @@ describe("Callback", () => {
 
   it("falls back to the default token exchange error message", async () => {
     window.history.pushState({}, "", "/callback?code=bad-code");
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       json: async () => ({}),
     });
@@ -111,7 +111,7 @@ describe("Callback", () => {
 
   it("runs the callback flow only once in StrictMode", async () => {
     window.history.pushState({}, "", "/callback?code=abc123");
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({ access_token: " external-token " }),
     });
@@ -131,7 +131,7 @@ describe("Callback", () => {
     );
 
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalledTimes(1);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     });
   });
 });

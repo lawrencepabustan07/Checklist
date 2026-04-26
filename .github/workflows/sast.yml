@@ -30,8 +30,8 @@ jobs:
 
       - name: Run Bandit against Django backend
         run: |
-          bandit -c .bandit -r Myproject/checklist Myproject/Myproject
-          bandit -c .bandit Myproject/manage.py
+          bandit --ini .bandit -r Myproject/checklist Myproject/Myproject
+          bandit --ini .bandit Myproject/manage.py
 
   eslint-frontend-security:
     name: ESLint Frontend Security Scan
@@ -60,7 +60,7 @@ jobs:
         working-directory: Front-end
         env:
           ESLINT_USE_FLAT_CONFIG: "false"
-        run: npx eslint --config ../.eslintrc.json --ext .js,.jsx src
+        run: npx eslint --resolve-plugins-relative-to . --config ../.eslintrc.json --ext .js,.jsx src
 
   semgrep-fullstack:
     name: Semgrep Full Stack Scan

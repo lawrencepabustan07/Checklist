@@ -8,57 +8,59 @@ export default function Callback() {
   const called = useRef(false);
 
   useEffect(() => {
-    if (called.current) return;
-    called.current = true;
-    handleCallback();
-  }, []);
-
-  async function handleCallback() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const code = urlParams.get("code");
-
-    if (!code) {
-      setError("No authorization code received");
-      setTimeout(() => navigate("/login"), 3000);
+    if (called.current) {
       return;
     }
+    called.current = true;
+    async function handleCallback() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const code = urlParams.get("code");
 
-    try {
-      const tokenResponse = await fetch(
-        `https://dev-zg54pxgt5z5cithx.us.auth0.com/oauth/token`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            grant_type: "authorization_code",
-            client_id: import.meta.env.VITE_AUTH0_CLIENT_ID,
-            client_secret: import.meta.env.VITE_AUTH0_CLIENT_SECRET,
-            code: code,
-            redirect_uri: "http://localhost:5173/callback",
-          }),
-        },
-      );
-
-      const tokenData = await tokenResponse.json();
-
-      if (!tokenResponse.ok) {
-        throw new Error(tokenData.error_description || "Token exchange failed");
+      if (!code) {
+        setError("No authorization code received");
+        setTimeout(() => navigate("/login"), 3000);
+        return;
       }
 
-      const cleanToken = String(tokenData.access_token).trim();
-      const registerResponse = await register(cleanToken);
-      const registerData = registerResponse.data;
+      try {
+        const tokenResponse = await fetch(
+          `https://dev-zg54pxgt5z5cithx.us.auth0.com/oauth/token`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              grant_type: "authorization_code",
+              client_id: import.meta.env.VITE_AUTH0_CLIENT_ID,
+              client_secret: import.meta.env.VITE_AUTH0_CLIENT_SECRET,
+              code,
+              redirect_uri: "http://localhost:5173/callback",
+            }),
+          },
+        );
 
-      localStorage.setItem("access_token", registerData.access_token);
-      localStorage.setItem("email", registerData.email);
+        const tokenData = await tokenResponse.json();
 
-      navigate("/dashboard");
-    } catch (err) {
-      console.error("Callback error:", err);
-      setError(err.message);
-      setTimeout(() => navigate("/login"), 3000);
+        if (!tokenResponse.ok) {
+          throw new Error(tokenData.error_description || "Token exchange failed");
+        }
+
+        const cleanToken = String(tokenData.access_token).trim();
+        const registerResponse = await register(cleanToken);
+        const registerData = registerResponse.data;
+
+        localStorage.setItem("access_token", registerData.access_token);
+        localStorage.setItem("email", registerData.email);
+
+        navigate("/dashboard");
+      } catch (err) {
+        console.error("Callback error:", err);
+        setError(err.message);
+        setTimeout(() => navigate("/login"), 3000);
+      }
     }
-  }
+
+    handleCallback();
+  }, [navigate]);
 
   return (
     <div style={styles.container}>

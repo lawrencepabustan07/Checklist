@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -27,18 +27,9 @@ function PublicRoute({ children }) {
 }
 
 function App() {
-  const [loading, setLoading] = useState(true);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-  useEffect(() => {
-    const token = localStorage.getItem("access_token");
-    setIsLoggedIn(!!token);
-    setLoading(false);
-  }, []);
-
-  if (loading) {
-    return <div style={styles.loading}>Loading...</div>;
-  }
+  const [isLoggedIn, setIsLoggedIn] = useState(
+    () => !!localStorage.getItem("access_token"),
+  );
 
   return (
     <Router>
@@ -79,17 +70,4 @@ function App() {
     </Router>
   );
 }
-
-const styles = {
-  loading: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    height: "100vh",
-    fontSize: "18px",
-    color: "#667eea",
-    fontFamily: "system-ui, sans-serif",
-  },
-};
-
 export default App;
