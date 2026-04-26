@@ -13,6 +13,7 @@ from django.db import IntegrityError
 from django.http import HttpRequest
 from django.test import TestCase
 from django.test import override_settings
+from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient, APITestCase
 from rest_framework.exceptions import AuthenticationFailed
@@ -232,6 +233,25 @@ class Auth0UserViewTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.user.refresh_from_db()
         self.assertTrue(bool(self.user.profile.avatar))
+
+    def test_authenticated_user_can_update_preferences(self):
+        self.client.force_authenticate(user=self.user)
+
+        response = self.client.patch(
+            self.URL,
+            {
+                "theme_preference": "dark",
+                "sort_option": "due_date",
+                "sort_direction": "desc",
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.profile.refresh_from_db()
+        self.assertEqual(self.user.profile.theme_preference, "dark")
+        self.assertEqual(self.user.profile.sort_option, "due_date")
+        self.assertEqual(self.user.profile.sort_direction, "desc")
 
 
 class RegisterViewTests(APITestCase):
@@ -662,6 +682,18 @@ class ChecklistApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_permanently_delete_checklist(self):
+        checklist = Checklist.objects.create(
+            name="Delete Me", type="Daily", created_by=self.user
+        )
+
+        response = self.client.delete(
+            f"/api/checklist/{checklist.id}/permanent/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Checklist.objects.filter(id=checklist.id).exists())
+
 
 # ============================================================
 # 5. CHECKLIST ITEM API TESTS
@@ -912,6 +944,118 @@ class ChecklistItemApiTests(APITestCase):
             format="json"
         )
         self.assertEqual(response.status_code, 400)
+
+    def test_create_item_supports_due_date_and_priority(self):
+        response = self.client.post(
+            f"/api/checklist/{self.checklist.id}/items/",
+            {
+                "label": "Stretch",
+                "type": "Habit",
+                "due_date": "2026-04-26",
+                "priority": "high",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["priority"], "high")
+        self.assertEqual(response.data["due_date"], "2026-04-26")
+
+    def test_bulk_priority_updates_multiple_items(self):
+        first = ChecklistItem.objects.create(
+            checklist=self.checklist,
+            label="First bulk",
+            type="Task",
+            priority="low",
+            position=1,
+        )
+        second = ChecklistItem.objects.create(
+            checklist=self.checklist,
+            label="Second bulk",
+            type="Task",
+            priority="low",
+            position=2,
+        )
+
+        response = self.client.patch(
+            f"/api/checklist/{self.checklist.id}/items/bulk-priority/",
+            {
+                "item_ids": [str(first.id), str(second.id)],
+                "priority": "high",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.priority, "high")
+        self.assertEqual(second.priority, "high")
+
+    def test_item_calendar_groups_by_due_date(self):
+        ChecklistItem.objects.create(
+            checklist=self.checklist,
+            label="Calendar item",
+            type="Task",
+            due_date="2026-04-27",
+            position=1,
+        )
+
+        response = self.client.get(
+            f"/api/checklist/{self.checklist.id}/items/calendar/",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("2026-04-27", response.data)
+
+    def test_item_analytics_returns_summary(self):
+        item = ChecklistItem.objects.create(
+            checklist=self.checklist,
+            label="Tracked item",
+            type="Task",
+            due_date="2026-04-26",
+            is_completed=True,
+            position=1,
+        )
+        item.completed_at = timezone.now()
+        item.save(update_fields=["completed_at"])
+
+        response = self.client.get(
+            f"/api/checklist/{self.checklist.id}/items/analytics/",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["total_items"], 1)
+        self.assertEqual(response.data["completed_items"], 1)
+        self.assertIn("weekly_activity", response.data)
+
+
+class DashboardAnalyticsApiTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="analytics-user", email="analytics@example.com", password="pass1234"
+        )
+        self.client.force_authenticate(user=self.user)
+        self.checklist = Checklist.objects.create(
+            name="Analytics Checklist",
+            type="Daily",
+            created_by=self.user,
+        )
+        ChecklistItem.objects.create(
+            checklist=self.checklist,
+            label="Tracked item",
+            type="Task",
+            priority="medium",
+            due_date="2026-04-26",
+            position=1,
+        )
+
+    def test_dashboard_analytics_returns_item_totals(self):
+        response = self.client.get("/api/checklist/dashboard-analytics/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["data"]["checklists"], 1)
+        self.assertEqual(response.data["data"]["total_items"], 1)
 
 
 # ============================================================

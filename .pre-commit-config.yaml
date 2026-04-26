@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: bandit-backend
+        name: Bandit backend security scan
+        entry: bandit -c .bandit -r Myproject/checklist Myproject/Myproject
+        language: system
+        pass_filenames: false
+        files: ^Myproject/.*\.py$
+
+      - id: semgrep-fullstack
+        name: Semgrep frontend and backend scan
+        entry: semgrep scan --error --config p/secrets --config p/python --config p/django --config p/javascript --config p/react --exclude Front-end/node_modules --exclude Front-end/dist --exclude Front-end/coverage --exclude Myproject/checklist/migrations --exclude Myproject/media --exclude Myproject/htmlcov Front-end/src Myproject
+        language: system
+        pass_filenames: false
+        files: ^(Front-end/src|Myproject)/.*\.(js|jsx|py)$
+
+      - id: eslint-frontend-security
+        name: ESLint frontend security rules
+        entry: sh -c 'cd Front-end && ESLINT_USE_FLAT_CONFIG=false npx eslint --config ../.eslintrc.json --ext .js,.jsx src'
+        language: system
+        pass_filenames: false
+        files: ^Front-end/src/.*\.(js|jsx)$

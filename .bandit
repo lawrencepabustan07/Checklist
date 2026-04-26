@@ -1,0 +1,3 @@
+[bandit]
+exclude = Myproject/checklist/migrations,Myproject/checklist/tests.py,Myproject/htmlcov,Myproject/media,Myproject/.pytest_cache,Front-end/node_modules,Front-end/dist,Front-end/coverage
+skips = B101

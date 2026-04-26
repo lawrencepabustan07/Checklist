@@ -105,6 +105,9 @@ class Auth0UserView(APIView):
                 'id': request.user.id,
                 'email': request.user.email,
                 'avatar_url': get_avatar_url(request, profile),
+                'theme_preference': profile.theme_preference,
+                'sort_option': profile.sort_option,
+                'sort_direction': profile.sort_direction,
             }
         }, status=200)
 
@@ -112,6 +115,9 @@ class Auth0UserView(APIView):
         profile = get_or_create_profile(request.user)
         remove_avatar = str(request.data.get('remove_avatar', '')).lower() == 'true'
         avatar = request.FILES.get('avatar')
+        theme_preference = request.data.get("theme_preference")
+        sort_option = request.data.get("sort_option")
+        sort_direction = request.data.get("sort_direction")
 
         validation_error = validate_avatar(avatar)
         if validation_error:
@@ -126,6 +132,15 @@ class Auth0UserView(APIView):
         elif avatar:
             profile.avatar = avatar
 
+        if theme_preference in dict(UserProfile.THEME_CHOICES):
+            profile.theme_preference = theme_preference
+
+        if sort_option:
+            profile.sort_option = sort_option
+
+        if sort_direction in {"asc", "desc"}:
+            profile.sort_direction = sort_direction
+
         profile.save()
         if old_avatar and (remove_avatar or avatar) and old_avatar.name != getattr(profile.avatar, 'name', None):
             old_avatar.delete(save=False)
@@ -136,6 +151,9 @@ class Auth0UserView(APIView):
                 'id': request.user.id,
                 'email': request.user.email,
                 'avatar_url': get_avatar_url(request, profile),
+                'theme_preference': profile.theme_preference,
+                'sort_option': profile.sort_option,
+                'sort_direction': profile.sort_direction,
             }
         }, status=200)
 

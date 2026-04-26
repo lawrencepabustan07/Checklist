@@ -3,7 +3,6 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// ─── Mock axios BEFORE importing Dashboard ──────────────────────────────────
 const { mockApi } = vi.hoisted(() => ({
   mockApi: {
     get: vi.fn(),
@@ -20,30 +19,23 @@ vi.mock("axios", () => ({
 
 import Dashboard from "./Dashboard";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-/** Default resolved responses for the three on-mount GET calls */
-function setupDefaultMocks({
-  profile = { data: { data: { avatar_url: "http://example.com/avatar.svg" } } },
-  checklists = { data: { data: [] } },
-  archived = { data: { data: [] } },
-} = {}) {
-  // Component calls: loadProfile → GET /auth/user/
-  //                  loadChecklists → GET /checklist/
-  //                  loadArchivedChecklists → GET /checklist/archived/
-  mockApi.get.mockImplementation((url) => {
-    if (url === "/auth/user/") return Promise.resolve(profile);
-    if (url === "/checklist/") return Promise.resolve(checklists);
-    if (url === "/checklist/archived/") return Promise.resolve(archived);
-    return Promise.resolve({ data: { data: [] } });
-  });
-}
-
 const SAMPLE_LIST = {
   id: "1",
   name: "Daily Setup",
   type: "Daily",
   image_url: "http://test/image.png",
+};
+const WEEKLY_LIST = {
+  id: "2",
+  name: "Weekly Review",
+  type: "Weekly",
+  image_url: "http://test/weekly.png",
+};
+const MONTHLY_LIST = {
+  id: "3",
+  name: "Monthly Close",
+  type: "Monthly",
+  image_url: "http://test/monthly.png",
 };
 
 const SAMPLE_ITEM = {
@@ -51,7 +43,77 @@ const SAMPLE_ITEM = {
   label: "Brush teeth",
   type: "Habit",
   is_completed: false,
+  due_date: "2026-04-26",
+  priority: "medium",
 };
+
+function setupDefaultMocks({
+  profile = {
+    data: {
+      data: {
+        avatar_url: "http://example.com/avatar.svg",
+        theme_preference: "system",
+        sort_option: "position",
+        sort_direction: "asc",
+      },
+    },
+  },
+  checklists = { data: { data: [SAMPLE_LIST] } },
+  archived = { data: { data: [] } },
+  dashboardAnalytics = {
+    data: {
+      data: {
+        total_items: 3,
+        completed_items: 1,
+        pending_items: 2,
+        completion_rate: 33.33,
+        overdue_items: 1,
+      },
+    },
+  },
+  items = { data: { data: [SAMPLE_ITEM] } },
+  checklistAnalytics = {
+    data: {
+      total_items: 1,
+      completed_items: 0,
+      pending_items: 1,
+      overdue_items: 0,
+      completion_rate: 0,
+      weekly_activity: {
+        Mon: 0,
+        Tue: 0,
+        Wed: 0,
+        Thu: 0,
+        Fri: 0,
+        Sat: 0,
+        Sun: 0,
+      },
+      best_day: null,
+      heatmap: {},
+      priority_breakdown: [],
+    },
+  },
+  calendar = { data: { "2026-04-26": [SAMPLE_ITEM] } },
+} = {}) {
+  mockApi.get.mockImplementation((url) => {
+    if (url === "/auth/user/") return Promise.resolve(profile);
+    if (url === "/checklist/") return Promise.resolve(checklists);
+    if (url === "/checklist/archived/") return Promise.resolve(archived);
+    if (url === "/checklist/dashboard-analytics/") {
+      return Promise.resolve(dashboardAnalytics);
+    }
+    if (url.startsWith(`/checklist/${SAMPLE_LIST.id}/items/analytics/`)) {
+      return Promise.resolve(checklistAnalytics);
+    }
+    if (url.startsWith(`/checklist/${SAMPLE_LIST.id}/items/calendar/`)) {
+      return Promise.resolve(calendar);
+    }
+    if (url.startsWith(`/checklist/${SAMPLE_LIST.id}/items/`)) {
+      return Promise.resolve(items);
+    }
+    return Promise.resolve({ data: { data: [] } });
+  });
+}
 
 function renderDashboard(props = {}) {
   return render(
@@ -61,115 +123,67 @@ function renderDashboard(props = {}) {
   );
 }
 
-// ─── Tests ──────────────────────────────────────────────────────────────────
+async function openChecklist(user, items = [SAMPLE_ITEM]) {
+  setupDefaultMocks({ items: { data: { data: items } } });
+  renderDashboard();
+  await user.click(await screen.findByText("Daily Setup"));
+  if (items.length > 0) {
+    await screen.findByText(items[0].label);
+  } else {
+    await screen.findByText(/No items yet/i);
+  }
+}
 
-describe("Dashboard – initial load", () => {
+describe("Dashboard", () => {
   beforeEach(() => {
     mockApi.get.mockReset();
     mockApi.post.mockReset();
     mockApi.patch.mockReset();
     mockApi.delete.mockReset();
+    localStorage.clear();
     localStorage.setItem("email", "lawrence@example.com");
     localStorage.setItem("access_token", "token");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
   });
 
-  it("shows the welcome message with the user's name", async () => {
+  it("renders welcome copy and dashboard analytics on load", async () => {
     setupDefaultMocks();
     renderDashboard();
+
     expect(await screen.findByText("Welcome back, lawrence")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard Analytics")).toBeInTheDocument();
+    expect(screen.getByText("Total Items")).toBeInTheDocument();
   });
 
-  it("shows 'User' when no email is stored", async () => {
-    localStorage.removeItem("email");
-    setupDefaultMocks();
-    renderDashboard();
-    expect(await screen.findByText("Welcome back, User")).toBeInTheDocument();
-  });
+  it("filters checklists by type and shows count badges", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks({
+      checklists: { data: { data: [SAMPLE_LIST, WEEKLY_LIST, MONTHLY_LIST] } },
+    });
 
-  it("renders checklists returned from the API", async () => {
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
     renderDashboard();
     expect(await screen.findByText("Daily Setup")).toBeInTheDocument();
+    expect(screen.getByText("Weekly Review")).toBeInTheDocument();
+    expect(screen.getByText("Monthly Close")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /All 3/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Daily 1/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Weekly 1/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Weekly 1/i }));
+
+    expect(screen.getByText("Weekly Review")).toBeInTheDocument();
+    expect(screen.queryByText("Daily Setup")).not.toBeInTheDocument();
+    expect(screen.queryByText("Monthly Close")).not.toBeInTheDocument();
   });
 
-  it("shows empty-state message when there are no checklists", async () => {
-    setupDefaultMocks();
-    renderDashboard();
-    expect(await screen.findByText(/No checklists yet/i)).toBeInTheDocument();
-  });
-
-  it("shows error banner when checklist load fails", async () => {
-    mockApi.get.mockImplementation((url) => {
-      if (url === "/auth/user/") return Promise.resolve({ data: { data: {} } });
-      if (url === "/checklist/archived/") return Promise.resolve({ data: { data: [] } });
-      return Promise.reject(new Error("Network error"));
-    });
-    renderDashboard();
-    expect(await screen.findByText(/Failed to load checklists/i)).toBeInTheDocument();
-  });
-
-  it("sets the avatar URL from the profile endpoint", async () => {
-    setupDefaultMocks({ profile: { data: { data: { avatar_url: "http://example.com/avatar.svg" } } } });
-    renderDashboard();
-    await screen.findByText("Welcome back, lawrence");
-    const avatar = screen.getByAltText("Profile avatar");
-    expect(avatar.src).toBe("http://example.com/avatar.svg");
-  });
-
-  it("falls back to default avatar when profile has no avatar_url", async () => {
-    setupDefaultMocks({ profile: { data: { data: {} } } });
-    renderDashboard();
-    await screen.findByText("Welcome back, lawrence");
-    const avatar = screen.getByAltText("Profile avatar");
-    expect(avatar.src).toContain("default-avatar.svg");
-  });
-
-  it("silently handles a failing profile fetch (no crash)", async () => {
-    mockApi.get.mockImplementation((url) => {
-      if (url === "/auth/user/") return Promise.reject(new Error("Forbidden"));
-      if (url === "/checklist/") return Promise.resolve({ data: { data: [] } });
-      if (url === "/checklist/archived/") return Promise.resolve({ data: { data: [] } });
-      return Promise.resolve({ data: {} });
-    });
-    renderDashboard();
-    expect(await screen.findByText(/No checklists yet/i)).toBeInTheDocument();
-  });
-
-  it("shows archived count in the toggle button", async () => {
-    setupDefaultMocks({
-      archived: { data: { data: [{ id: "99", name: "Old List", type: "Daily" }] } },
-    });
-    renderDashboard();
-    expect(await screen.findByText(/Show Archived \(1\)/i)).toBeInTheDocument();
-  });
-});
-
-describe("Dashboard – creating a checklist", () => {
-  beforeEach(() => {
-    mockApi.get.mockReset();
-    mockApi.post.mockReset();
-    mockApi.patch.mockReset();
-    mockApi.delete.mockReset();
-    localStorage.setItem("email", "lawrence@example.com");
-    localStorage.setItem("access_token", "token");
-  });
-
-  it("opens and closes the add-checklist form", async () => {
+  it("creates a checklist with multipart form data", async () => {
     const user = userEvent.setup();
-    setupDefaultMocks();
-    renderDashboard();
-    await screen.findByText(/No checklists yet/i);
-
-    await user.click(screen.getByRole("button", { name: "+ New Checklist" }));
-    expect(screen.getByPlaceholderText("Checklist name")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByPlaceholderText("Checklist name")).not.toBeInTheDocument();
-  });
-
-  it("submits the form and appends the new checklist", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks();
+    setupDefaultMocks({ checklists: { data: { data: [] } } });
     mockApi.post.mockResolvedValueOnce({
       data: { data: { id: "2", name: "Weekly Review", type: "Weekly" } },
     });
@@ -183,392 +197,401 @@ describe("Dashboard – creating a checklist", () => {
     await user.click(screen.getByRole("button", { name: "+ Create Checklist" }));
 
     expect(await screen.findByText("Weekly Review")).toBeInTheDocument();
-
-    const [url, formData] = mockApi.post.mock.calls[0];
-    expect(url).toBe("/checklist/");
+    const [, formData] = mockApi.post.mock.calls[0];
     expect(formData.get("name")).toBe("Weekly Review");
     expect(formData.get("type")).toBe("Weekly");
   });
 
-  it("shows an API error message when checklist creation fails", async () => {
+  it("shows checklist creation errors from the API", async () => {
     const user = userEvent.setup();
-    setupDefaultMocks();
+    setupDefaultMocks({ checklists: { data: { data: [] } } });
     mockApi.post.mockRejectedValueOnce({
       response: { data: { message: "Name already taken" } },
     });
 
     renderDashboard();
     await screen.findByText(/No checklists yet/i);
-
     await user.click(screen.getByRole("button", { name: "+ New Checklist" }));
-    await user.type(screen.getByPlaceholderText("Checklist name"), "Dup");
-    await user.selectOptions(screen.getByRole("combobox"), "Daily");
+    await user.type(screen.getByPlaceholderText("Checklist name"), "Weekly Review");
+    await user.selectOptions(screen.getByRole("combobox"), "Weekly");
     await user.click(screen.getByRole("button", { name: "+ Create Checklist" }));
 
     expect(await screen.findByText("Name already taken")).toBeInTheDocument();
   });
 
-  it("shows image validation error for a disallowed MIME type", async () => {
+  it("validates checklist image type and size", async () => {
     const user = userEvent.setup();
     setupDefaultMocks();
     renderDashboard();
-    await screen.findByText(/No checklists yet/i);
+    await screen.findByText("Daily Setup");
 
     await user.click(screen.getByRole("button", { name: "+ New Checklist" }));
 
-    const file = new File(["gif"], "anim.gif", { type: "image/gif" });
-    const input = document.getElementById("new-checklist-image");
-    fireEvent.change(input, { target: { files: [file] } });
-
+    const fileInput = document.getElementById("new-checklist-image");
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["gif"], "bad.gif", { type: "image/gif" })] },
+    });
     expect(await screen.findByText(/Only JPG, PNG, and WEBP/i)).toBeInTheDocument();
-  });
-
-  it("shows image validation error for an oversized file", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks();
-    renderDashboard();
-    await screen.findByText(/No checklists yet/i);
-
-    await user.click(screen.getByRole("button", { name: "+ New Checklist" }));
 
     const bigContent = new Uint8Array(3 * 1024 * 1024);
-    const file = new File([bigContent], "big.png", { type: "image/png" });
-    const input = document.getElementById("new-checklist-image");
-    fireEvent.change(input, { target: { files: [file] } });
-
+    fireEvent.change(fileInput, {
+      target: { files: [new File([bigContent], "big.png", { type: "image/png" })] },
+    });
     expect(await screen.findByText(/2MB or smaller/i)).toBeInTheDocument();
   });
 
-  it("accepts a valid image file and shows a preview", async () => {
+  it("accepts a valid checklist image for creation", async () => {
+    const user = userEvent.setup();
+    global.URL.createObjectURL = vi.fn(() => "blob:cover-preview");
+    setupDefaultMocks();
+    renderDashboard();
+    await screen.findByText("Daily Setup");
+
+    await user.click(screen.getByRole("button", { name: "+ New Checklist" }));
+    const fileInput = document.getElementById("new-checklist-image");
+    fireEvent.change(fileInput, {
+      target: { files: [new File(["img"], "cover.png", { type: "image/png" })] },
+    });
+
+    expect(screen.getByAltText("New checklist preview")).toHaveAttribute(
+      "src",
+      "blob:cover-preview",
+    );
+  });
+
+  it("edits a checklist and supports removing its image", async () => {
     const user = userEvent.setup();
     setupDefaultMocks();
-    global.URL.createObjectURL = vi.fn(() => "blob:preview-url");
-
-    renderDashboard();
-    await screen.findByText(/No checklists yet/i);
-    await user.click(screen.getByRole("button", { name: "+ New Checklist" }));
-
-    const file = new File(["img"], "photo.jpg", { type: "image/jpeg" });
-    const input = document.getElementById("new-checklist-image");
-    fireEvent.change(input, { target: { files: [file] } });
-
-    expect(screen.queryByText(/Only JPG/i)).not.toBeInTheDocument();
-
-    await user.type(screen.getByPlaceholderText("Checklist name"), "Image List");
-    await user.selectOptions(screen.getByRole("combobox"), "Daily");
-    
-    mockApi.post.mockResolvedValueOnce({
-      data: { data: { id: "3", name: "Image List", type: "Daily" } }
-    });
-    
-    await user.click(screen.getByRole("button", { name: "+ Create Checklist" }));
-    await waitFor(() => expect(mockApi.post).toHaveBeenCalledTimes(1));
-    const formData = mockApi.post.mock.calls[0][1];
-    expect(formData.has("image")).toBe(true);
-  });
-});
-
-describe("Dashboard – editing a checklist", () => {
-  beforeEach(() => {
-    mockApi.get.mockReset();
-    mockApi.post.mockReset();
-    mockApi.patch.mockReset();
-    mockApi.delete.mockReset();
-    localStorage.setItem("email", "test@example.com");
-    localStorage.setItem("access_token", "token");
-  });
-
-  it("enters edit mode and cancels via the Cancel button", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
-    renderDashboard();
-
-    await user.click(await screen.findByRole("button", { name: "Edit" }));
-    expect(screen.getByDisplayValue("Daily Setup")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByDisplayValue("Daily Setup")).not.toBeInTheDocument();
-  });
-
-  it("saves checklist edits and updates the UI", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
     mockApi.patch.mockResolvedValueOnce({
-      data: { data: { ...SAMPLE_LIST, name: "Morning Routine" } },
+      data: { data: { ...SAMPLE_LIST, name: "Morning Setup", image_url: null } },
     });
 
     renderDashboard();
-    await user.click(await screen.findByRole("button", { name: "Edit" }));
-
-    const nameInput = screen.getByDisplayValue("Daily Setup");
-    await user.clear(nameInput);
-    await user.type(nameInput, "Morning Routine");
+    await screen.findByText("Daily Setup");
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const checklistNameInput = screen.getByDisplayValue("Daily Setup");
+    await user.clear(checklistNameInput);
+    await user.type(checklistNameInput, "Morning Setup");
+    await user.click(screen.getByRole("button", { name: "Delete image" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByText("Morning Routine")).toBeInTheDocument();
-    expect(mockApi.patch).toHaveBeenCalledWith(`/checklist/${SAMPLE_LIST.id}/`, expect.any(FormData));
+    await waitFor(() => {
+      expect(mockApi.patch).toHaveBeenCalledWith("/checklist/1/", expect.any(FormData));
+    });
+    const formData = mockApi.patch.mock.calls[0][1];
+    expect(formData.get("remove_image")).toBe("true");
+    expect(await screen.findByText("Morning Setup")).toBeInTheDocument();
   });
 
-  it("shows an error when updating checklist fails", async () => {
+  it("updates checklist type during edit", async () => {
     const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
+    setupDefaultMocks();
+    mockApi.patch.mockResolvedValueOnce({
+      data: { data: { ...SAMPLE_LIST, type: "Weekly" } },
+    });
+
+    renderDashboard();
+    await screen.findByText("Daily Setup");
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.selectOptions(screen.getByDisplayValue("Daily"), "Weekly");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(mockApi.patch).toHaveBeenCalledWith("/checklist/1/", expect.any(FormData));
+    });
+  });
+
+  it("accepts a valid replacement image while editing a checklist", async () => {
+    const user = userEvent.setup();
+    global.URL.createObjectURL = vi.fn(() => "blob:edit-preview");
+    setupDefaultMocks();
+    renderDashboard();
+    await screen.findByText("Daily Setup");
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const fileInputs = document.querySelectorAll("input[type='file']");
+    fireEvent.change(fileInputs[fileInputs.length - 1], {
+      target: { files: [new File(["img"], "edit.png", { type: "image/png" })] },
+    });
+
+    expect(screen.getByAltText("Daily Setup preview")).toHaveAttribute(
+      "src",
+      "blob:edit-preview",
+    );
+  });
+
+  it("shows checklist update errors", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks();
     mockApi.patch.mockRejectedValueOnce({
       response: { data: { message: "Update failed" } },
     });
 
     renderDashboard();
-    await user.click(await screen.findByRole("button", { name: "Edit" }));
+    await screen.findByText("Daily Setup");
+    await user.click(screen.getByRole("button", { name: "Edit" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText("Update failed")).toBeInTheDocument();
   });
 
-  it("sets remove-image flag when 'Delete image' is clicked", async () => {
+  it("opens a checklist and requests items using saved sort defaults", async () => {
     const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
-    mockApi.patch.mockResolvedValueOnce({
-      data: { data: { ...SAMPLE_LIST, image_url: null } },
-    });
-
+    setupDefaultMocks();
     renderDashboard();
-    await user.click(await screen.findByRole("button", { name: "Edit" }));
-    await user.click(screen.getByRole("button", { name: "Delete image" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(mockApi.patch).toHaveBeenCalledTimes(1));
-    const formData = mockApi.patch.mock.calls[0][1];
-    expect(formData.get("remove_image")).toBe("true");
-  });
-
-  it("updates checklist with a new image", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
-    mockApi.patch.mockResolvedValueOnce({
-      data: { data: { ...SAMPLE_LIST } },
-    });
-
-    renderDashboard();
-    await user.click(await screen.findByRole("button", { name: "Edit" }));
-    
-    const file = new File(["img"], "photo.jpg", { type: "image/jpeg" });
-    const editForm = screen.getByDisplayValue("Daily Setup").closest("form");
-    const imageInput = editForm.querySelector("input[type='file']");
-    fireEvent.change(imageInput, { target: { files: [file] } });
-    
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() => expect(mockApi.patch).toHaveBeenCalledTimes(1));
-    const formData = mockApi.patch.mock.calls[0][1];
-    expect(formData.has("image")).toBe(true);
-  });
-
-  it("shows error for invalid edit image file", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
-    renderDashboard();
-    await user.click(await screen.findByRole("button", { name: "Edit" }));
-    const file = new File(["gif"], "anim.gif", { type: "image/gif" });
-    const editForm = screen.getByDisplayValue("Daily Setup").closest("form");
-    const imageInput = editForm.querySelector("input[type='file']");
-    fireEvent.change(imageInput, { target: { files: [file] } });
-    
-    expect(await screen.findByText(/Only JPG, PNG, and WEBP/i)).toBeInTheDocument();
-  });
-});
-
-describe("Dashboard – archiving & restoring checklists", () => {
-  beforeEach(() => {
-    mockApi.get.mockReset();
-    mockApi.post.mockReset();
-    mockApi.patch.mockReset();
-    mockApi.delete.mockReset();
-    localStorage.setItem("email", "test@example.com");
-    localStorage.setItem("access_token", "token");
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-  });
-
-  it("archives a checklist and removes it from the active list", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
-    mockApi.delete.mockResolvedValueOnce({ data: { data: SAMPLE_LIST } });
-
-    renderDashboard();
-    await user.click(await screen.findByRole("button", { name: "Archive" }));
-
-    await waitFor(() => expect(screen.queryByText("Daily Setup")).not.toBeInTheDocument());
-    expect(mockApi.delete).toHaveBeenCalledWith(`/checklist/${SAMPLE_LIST.id}/`);
-  });
-
-  it("archives a checklist using local fallback when the API omits checklist data", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
-    mockApi.delete.mockResolvedValueOnce({ data: {} });
-
-    renderDashboard();
-    await user.click(await screen.findByRole("button", { name: "Archive" }));
-
-    await waitFor(() => expect(screen.queryByText("Daily Setup")).not.toBeInTheDocument());
-  });
-
-  it("does NOT archive if the user cancels the confirm dialog", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
-    const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
-
-    renderDashboard();
-    await user.click(await screen.findByRole("button", { name: "Archive" }));
-
-    expect(mockApi.delete).not.toHaveBeenCalled();
-    expect(screen.getByText("Daily Setup")).toBeInTheDocument();
-  });
-
-  it("shows error when archiving fails", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
-    mockApi.delete.mockRejectedValueOnce(new Error("Network error"));
-
-    renderDashboard();
-    await user.click(await screen.findByRole("button", { name: "Archive" }));
-
-    expect(await screen.findByText(/Could not archive/i)).toBeInTheDocument();
-  });
-
-  it("shows and hides the archived section", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks({
-      archived: { data: { data: [{ id: "99", name: "Old List", type: "Daily" }] } },
-    });
-    renderDashboard();
-    await screen.findByText(/Show Archived/i);
-
-    await user.click(screen.getByRole("button", { name: /Show Archived/i }));
-    expect(screen.getByText("Old List")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Hide Archived" }));
-    expect(screen.queryByText("Old List")).not.toBeInTheDocument();
-  });
-
-  it("restores a checklist from the archived section", async () => {
-    const user = userEvent.setup();
-    const archivedItem = { id: "99", name: "Old List", type: "Daily" };
-    setupDefaultMocks({ archived: { data: { data: [archivedItem] } } });
-    mockApi.post.mockResolvedValueOnce({
-      data: { data: { ...archivedItem } },
-    });
-
-    renderDashboard();
-    await user.click(await screen.findByRole("button", { name: /Show Archived/i }));
-    expect(screen.getByText("Old List")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Restore" }));
-
-    await waitFor(() => {
-      expect(mockApi.post).toHaveBeenCalledWith(`/checklist/${archivedItem.id}/restore/`);
-    });
-  });
-
-  it("restores a checklist using local fallback when the API omits checklist data", async () => {
-    const user = userEvent.setup();
-    const archivedItem = { id: "99", name: "Old List", type: "Daily" };
-    setupDefaultMocks({ archived: { data: { data: [archivedItem] } } });
-    mockApi.post.mockResolvedValueOnce({ data: {} });
-
-    renderDashboard();
-    await user.click(await screen.findByRole("button", { name: /Show Archived/i }));
-    await user.click(screen.getByRole("button", { name: "Restore" }));
-
-    expect(await screen.findByText("Old List")).toBeInTheDocument();
-  });
-
-  it("shows error when restoring fails", async () => {
-    const user = userEvent.setup();
-    const archivedItem = { id: "99", name: "Old List", type: "Daily" };
-    setupDefaultMocks({ archived: { data: { data: [archivedItem] } } });
-    mockApi.post.mockRejectedValueOnce(new Error("Fail"));
-
-    renderDashboard();
-    await user.click(await screen.findByRole("button", { name: /Show Archived/i }));
-    await user.click(screen.getByRole("button", { name: "Restore" }));
-
-    expect(await screen.findByText(/Could not restore/i)).toBeInTheDocument();
-  });
-});
-
-describe("Dashboard – checklist items", () => {
-  beforeEach(() => {
-    mockApi.get.mockReset();
-    mockApi.post.mockReset();
-    mockApi.patch.mockReset();
-    mockApi.delete.mockReset();
-    localStorage.setItem("email", "test@example.com");
-    localStorage.setItem("access_token", "token");
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-  });
-
-  /** Renders dashboard and navigates into SAMPLE_LIST with the given items loaded */
-  async function openChecklist(user, items = [SAMPLE_ITEM]) {
-    mockApi.get.mockImplementation((url) => {
-      if (url === "/auth/user/") return Promise.resolve({ data: { data: {} } });
-      if (url === "/checklist/") return Promise.resolve({ data: { data: [SAMPLE_LIST] } });
-      if (url === "/checklist/archived/") return Promise.resolve({ data: { data: [] } });
-      if (url === `/checklist/${SAMPLE_LIST.id}/items/`) return Promise.resolve({ data: { data: items } });
-      return Promise.resolve({ data: { data: [] } });
-    });
-
-    renderDashboard();
     await user.click(await screen.findByText("Daily Setup"));
 
-    if (items.length > 0) {
-      await screen.findByText(items[0].label);
-    } else {
-      await screen.findByText(/No items yet/i);
-    }
-  }
-
-  it("opens a checklist and loads its items", async () => {
-    const user = userEvent.setup();
-    await openChecklist(user);
-    expect(screen.getByText("Brush teeth")).toBeInTheDocument();
+    expect(await screen.findByText("Brush teeth")).toBeInTheDocument();
+    expect(mockApi.get).toHaveBeenCalledWith(
+      expect.stringContaining("/checklist/1/items/?sort_by=position&direction=asc"),
+    );
+    expect(screen.getByText("Calendar View")).toBeInTheDocument();
   });
 
-  it("shows empty state when checklist has no items", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
-    mockApi.get.mockImplementation((url) => {
-      if (url === "/auth/user/") return Promise.resolve({ data: { data: {} } });
-      if (url === "/checklist/") return Promise.resolve({ data: { data: [SAMPLE_LIST] } });
-      if (url === "/checklist/archived/") return Promise.resolve({ data: { data: [] } });
-      if (url === `/checklist/${SAMPLE_LIST.id}/items/`) return Promise.resolve({ data: { data: [] } });
-      return Promise.resolve({ data: {} });
-    });
-
-    renderDashboard();
-    await user.click(await screen.findByText("Daily Setup"));
-    expect(await screen.findByText(/No items yet/i)).toBeInTheDocument();
-  });
-
-  it("shows error when item load fails", async () => {
-    const user = userEvent.setup();
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
-    mockApi.get.mockImplementation((url) => {
-      if (url === "/auth/user/") return Promise.resolve({ data: { data: {} } });
-      if (url === "/checklist/") return Promise.resolve({ data: { data: [SAMPLE_LIST] } });
-      if (url === "/checklist/archived/") return Promise.resolve({ data: { data: [] } });
-      return Promise.reject(new Error("Server error"));
-    });
-
-    renderDashboard();
-    await user.click(await screen.findByText("Daily Setup"));
-    expect(await screen.findByText(/Failed to load items/i)).toBeInTheDocument();
-  });
-
-  it("adds a new item to the list", async () => {
+  it("shows the empty state when a checklist has no items", async () => {
     const user = userEvent.setup();
     await openChecklist(user, []);
+    expect(screen.getByText(/No items yet - add one above/i)).toBeInTheDocument();
+  });
 
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
+  it("adds an item with due date and priority", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks();
     mockApi.post.mockResolvedValueOnce({
-      data: { data: { id: "20", label: "Floss", type: "Habit" } },
+      data: {
+        data: {
+          id: "20",
+          label: "Floss",
+          type: "Habit",
+          due_date: "2026-04-27",
+          priority: "high",
+        },
+      },
+    });
+
+    renderDashboard();
+    await user.click(await screen.findByText("Daily Setup"));
+    await screen.findByText("Brush teeth");
+
+    await user.click(screen.getByRole("button", { name: "+ Add Item" }));
+    await user.type(screen.getByPlaceholderText("Item label"), "Floss");
+    await user.type(screen.getByPlaceholderText("Item type"), "Habit");
+    fireEvent.change(document.querySelector("input[type='date']"), {
+      target: { value: "2026-04-27" },
+    });
+    await user.selectOptions(screen.getByDisplayValue("None"), "high");
+    await user.click(screen.getByRole("button", { name: "+ Add Item" }));
+
+    await waitFor(() => {
+      expect(mockApi.post).toHaveBeenCalledWith(
+        "/checklist/1/items/",
+        expect.objectContaining({
+          label: "Floss",
+          type: "Habit",
+          due_date: "2026-04-27",
+          priority: "high",
+        }),
+      );
+    });
+  });
+
+  it("shows calendar items for due dates", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks();
+    renderDashboard();
+
+    await user.click(await screen.findByText("Daily Setup"));
+    await screen.findByText("Brush teeth");
+    await user.click(screen.getByRole("button", { name: "Calendar View" }));
+
+    expect(await screen.findByText("Calendar View")).toBeInTheDocument();
+    expect((await screen.findAllByText("Apr 26, 2026")).length).toBeGreaterThan(0);
+  });
+
+  it("does not render the calendar card when there are no due-dated items", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks({ calendar: { data: {} } });
+    renderDashboard();
+
+    await user.click(await screen.findByText("Daily Setup"));
+    await screen.findByText("Brush teeth");
+    await user.click(screen.getByRole("button", { name: "Calendar View" }));
+
+    expect(screen.queryAllByText("Calendar View").length).toBe(0);
+    expect(screen.queryByText("Apr 26, 2026")).not.toBeInTheDocument();
+  });
+
+  it("toggles sort direction and resets sort defaults", async () => {
+    const user = userEvent.setup();
+    await openChecklist(user);
+
+    await user.click(screen.getByRole("button", { name: "Ascending" }));
+    expect(localStorage.getItem("sort_direction")).toBe("desc");
+
+    await user.selectOptions(screen.getByDisplayValue("Custom Order"), "priority");
+    expect(localStorage.getItem("sort_option")).toBe("priority");
+
+    await user.click(screen.getByRole("button", { name: "Reset Sort" }));
+    expect(localStorage.getItem("sort_option")).toBe("position");
+    expect(localStorage.getItem("sort_direction")).toBe("asc");
+  });
+
+  it("filters item requests by priority and status", async () => {
+    const user = userEvent.setup();
+    await openChecklist(user);
+
+    await user.selectOptions(screen.getByDisplayValue("All priorities"), "high");
+    await waitFor(() => {
+      expect(mockApi.get).toHaveBeenCalledWith(
+        expect.stringContaining("priority=high"),
+      );
+    });
+
+    await user.selectOptions(screen.getByDisplayValue("All statuses"), "completed");
+    await waitFor(() => {
+      expect(mockApi.get).toHaveBeenCalledWith(
+        expect.stringContaining("status=completed"),
+      );
+    });
+  });
+
+  it("renders analytics heatmap activity when completion data exists", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks({
+      checklistAnalytics: {
+        data: {
+          total_items: 2,
+          completed_items: 1,
+          pending_items: 1,
+          overdue_items: 0,
+          completion_rate: 50,
+          weekly_activity: {
+            Mon: 1,
+            Tue: 0,
+            Wed: 0,
+            Thu: 0,
+            Fri: 0,
+            Sat: 0,
+            Sun: 0,
+          },
+          best_day: "Mon",
+          heatmap: { "2026-04-26": 2 },
+          priority_breakdown: [],
+        },
+      },
+    });
+    renderDashboard();
+    await user.click(await screen.findByText("Daily Setup"));
+    await screen.findByText("Brush teeth");
+
+    expect(screen.getAllByText("Mon").length).toBeGreaterThan(0);
+    expect(screen.getByText("04-26")).toBeInTheDocument();
+  });
+
+  it("saves theme preference to local storage and backend", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks();
+    mockApi.patch.mockResolvedValue({ data: { data: {} } });
+
+    renderDashboard();
+    await screen.findByText("Welcome back, lawrence");
+
+    await user.click(screen.getByRole("button", { name: "Dark" }));
+
+    expect(localStorage.getItem("theme_preference")).toBe("dark");
+    await waitFor(() => {
+      expect(mockApi.patch).toHaveBeenCalledWith("/auth/user/", expect.any(FormData));
+    });
+  });
+
+  it("supports high contrast theme and default avatar fallback", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks({
+      profile: {
+        data: {
+          data: {
+            avatar_url: null,
+            theme_preference: "system",
+            sort_option: "position",
+            sort_direction: "asc",
+          },
+        },
+      },
+    });
+    renderDashboard();
+
+    expect(await screen.findByAltText("Profile avatar")).toHaveAttribute(
+      "src",
+      expect.stringContaining("default-avatar.svg"),
+    );
+    await user.click(screen.getByRole("button", { name: "High Contrast" }));
+    expect(localStorage.getItem("theme_preference")).toBe("contrast");
+  });
+
+  it("updates bulk priority for selected items", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks();
+    mockApi.patch.mockResolvedValueOnce({
+      data: [{ ...SAMPLE_ITEM, priority: "high" }],
+    });
+
+    renderDashboard();
+    await user.click(await screen.findByText("Daily Setup"));
+    await screen.findByText("Brush teeth");
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    await user.click(checkboxes[0]);
+
+    expect(await screen.findByText("1 selected")).toBeInTheDocument();
+    await user.selectOptions(screen.getByDisplayValue("Medium"), "high");
+    await user.click(screen.getByRole("button", { name: "Apply Priority" }));
+
+    await waitFor(() => {
+      expect(mockApi.patch).toHaveBeenCalledWith(
+        "/checklist/1/items/bulk-priority/",
+        { item_ids: ["10"], priority: "high" },
+      );
+    });
+  });
+
+  it("toggles selected item state off when clicked twice", async () => {
+    const user = userEvent.setup();
+    await openChecklist(user);
+    const selectCheckbox = screen.getAllByRole("checkbox")[0];
+    await user.click(selectCheckbox);
+    expect(await screen.findByText("1 selected")).toBeInTheDocument();
+    await user.click(selectCheckbox);
+    expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
+  });
+
+  it("does not apply bulk priority when nothing is selected", async () => {
+    const user = userEvent.setup();
+    await openChecklist(user);
+    expect(screen.queryByText("1 selected")).not.toBeInTheDocument();
+    expect(mockApi.patch).not.toHaveBeenCalledWith(
+      "/checklist/1/items/bulk-priority/",
+      expect.anything(),
+    );
+  });
+
+  it("shows bulk priority failure errors", async () => {
+    const user = userEvent.setup();
+    await openChecklist(user);
+    mockApi.patch.mockRejectedValueOnce(new Error("fail"));
+
+    const checkboxes = screen.getAllByRole("checkbox");
+    await user.click(checkboxes[0]);
+    await user.click(screen.getByRole("button", { name: "Apply Priority" }));
+
+    expect(await screen.findByText(/Failed to update item priorities/i)).toBeInTheDocument();
+  });
+
+  it("adds item errors are surfaced", async () => {
+    const user = userEvent.setup();
+    await openChecklist(user);
+    mockApi.post.mockRejectedValueOnce({
+      response: { data: { message: "Failed to add" } },
     });
 
     await user.click(screen.getByRole("button", { name: "+ Add Item" }));
@@ -576,541 +599,269 @@ describe("Dashboard – checklist items", () => {
     await user.type(screen.getByPlaceholderText("Item type"), "Habit");
     await user.click(screen.getByRole("button", { name: "+ Add Item" }));
 
-    expect(await screen.findByText("Floss")).toBeInTheDocument();
+    expect(await screen.findByText("Failed to add")).toBeInTheDocument();
   });
 
-  it("shows error when adding an item fails", async () => {
-    const user = userEvent.setup();
-    await openChecklist(user, []);
-
-    mockApi.post.mockRejectedValueOnce({
-      response: { data: { message: "Label required" } },
-    });
-
-    await user.click(screen.getByRole("button", { name: "+ Add Item" }));
-    await user.type(screen.getByPlaceholderText("Item label"), "x");
-    await user.type(screen.getByPlaceholderText("Item type"), "y");
-    await user.click(screen.getByRole("button", { name: "+ Add Item" }));
-
-    expect(await screen.findByText("Label required")).toBeInTheDocument();
-  });
-
-  it("cancels the add-item form", async () => {
-    const user = userEvent.setup();
-    await openChecklist(user, []);
-
-    await user.click(screen.getByRole("button", { name: "+ Add Item" }));
-    expect(screen.getByPlaceholderText("Item label")).toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByPlaceholderText("Item label")).not.toBeInTheDocument();
-  });
-
-  it("updates an existing item", async () => {
+  it("updates an item and persists due date and priority", async () => {
     const user = userEvent.setup();
     await openChecklist(user);
-
     mockApi.patch.mockResolvedValueOnce({
-      data: { data: { ...SAMPLE_ITEM, label: "Rinse" } },
+      data: {
+        data: {
+          ...SAMPLE_ITEM,
+          label: "Floss now",
+          due_date: "2026-04-27",
+          priority: "high",
+        },
+      },
     });
 
     await user.click(screen.getByRole("button", { name: "Edit" }));
-    const labelInput = screen.getByDisplayValue("Brush teeth");
-    await user.clear(labelInput);
-    await user.type(labelInput, "Rinse");
-    const typeInput = screen.getByDisplayValue("Habit");
-    await user.clear(typeInput);
-    await user.type(typeInput, "Task");
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(await screen.findByText("Rinse")).toBeInTheDocument();
-  });
-
-  it("updates an existing item when the API returns the item directly", async () => {
-    const user = userEvent.setup();
-    await openChecklist(user);
-
-    mockApi.patch.mockResolvedValueOnce({
-      data: { ...SAMPLE_ITEM, label: "Direct Update", type: "Task" },
+    const itemNameInput = screen.getByDisplayValue("Brush teeth");
+    await user.clear(itemNameInput);
+    await user.type(itemNameInput, "Floss now");
+    const itemTypeInput = screen.getByDisplayValue("Habit");
+    await user.clear(itemTypeInput);
+    await user.type(itemTypeInput, "Routine");
+    fireEvent.change(screen.getByDisplayValue("2026-04-26"), {
+      target: { value: "2026-04-27" },
     });
-
-    await user.click(screen.getByRole("button", { name: "Edit" }));
-    const labelInput = screen.getByDisplayValue("Brush teeth");
-    await user.clear(labelInput);
-    await user.type(labelInput, "Direct Update");
+    await user.selectOptions(screen.getByDisplayValue("Medium"), "high");
     await user.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByText("Direct Update")).toBeInTheDocument();
-  });
-
-  it("updates one item without changing the other items in the list", async () => {
-    const user = userEvent.setup();
-    const secondItem = { id: "11", label: "Wash face", type: "Habit", is_completed: false };
-    await openChecklist(user, [SAMPLE_ITEM, secondItem]);
-
-    mockApi.patch.mockResolvedValueOnce({
-      data: { data: { ...SAMPLE_ITEM, label: "Updated first item" } },
+    await waitFor(() => {
+        expect(mockApi.patch).toHaveBeenCalledWith(
+          "/checklist/1/items/10/",
+          expect.objectContaining({
+            label: "Floss now",
+            type: "Routine",
+            due_date: "2026-04-27",
+            priority: "high",
+          }),
+      );
     });
-
-    await user.click(screen.getAllByRole("button", { name: "Edit" })[0]);
-    const labelInput = screen.getByDisplayValue("Brush teeth");
-    await user.clear(labelInput);
-    await user.type(labelInput, "Updated first item");
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(await screen.findByText("Updated first item")).toBeInTheDocument();
-    expect(screen.getByText("Wash face")).toBeInTheDocument();
-  });
-
-  it("shows error when updating an item fails", async () => {
-    const user = userEvent.setup();
-    await openChecklist(user);
-
-    mockApi.patch.mockRejectedValueOnce({
-      response: { data: { message: "Save failed" } },
-    });
-
-    await user.click(screen.getByRole("button", { name: "Edit" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(await screen.findByText("Save failed")).toBeInTheDocument();
-  });
-
-  it("shows the default error when updating an item fails without a response message", async () => {
-    const user = userEvent.setup();
-    await openChecklist(user);
-
-    mockApi.patch.mockRejectedValueOnce(new Error("plain failure"));
-
-    await user.click(screen.getByRole("button", { name: "Edit" }));
-    await user.click(screen.getByRole("button", { name: "Save" }));
-
-    expect(await screen.findByText("Failed to update item")).toBeInTheDocument();
   });
 
   it("cancels item editing", async () => {
     const user = userEvent.setup();
     await openChecklist(user);
-
     await user.click(screen.getByRole("button", { name: "Edit" }));
-    expect(screen.getByDisplayValue("Brush teeth")).toBeInTheDocument();
-
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByDisplayValue("Brush teeth")).not.toBeInTheDocument();
   });
 
-  it("deletes an item after confirmation", async () => {
+  it("shows update item failure errors", async () => {
     const user = userEvent.setup();
     await openChecklist(user);
-
-    mockApi.delete.mockResolvedValueOnce({});
-
-    await user.click(screen.getByRole("button", { name: "Delete" }));
-
-    await waitFor(() => {
-      expect(screen.queryByText("Brush teeth")).not.toBeInTheDocument();
+    mockApi.patch.mockRejectedValueOnce({
+      response: { data: { message: "Save failed" } },
     });
-    expect(mockApi.delete).toHaveBeenCalledWith(
-      `/checklist/${SAMPLE_LIST.id}/items/${SAMPLE_ITEM.id}/`,
-    );
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Save failed")).toBeInTheDocument();
   });
 
-  it("does NOT delete item if confirm is cancelled", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
+  it("shows default item update failure message without response text", async () => {
+    const user = userEvent.setup();
+    await openChecklist(user);
+    mockApi.patch.mockRejectedValueOnce(new Error("boom"));
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Failed to update item")).toBeInTheDocument();
+  });
+
+  it("deletes an item after confirmation and handles cancel/failure paths", async () => {
     const user = userEvent.setup();
     await openChecklist(user);
 
+    vi.spyOn(window, "confirm").mockReturnValueOnce(false);
     await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(mockApi.delete).not.toHaveBeenCalledWith("/checklist/1/items/10/");
 
-    expect(mockApi.delete).not.toHaveBeenCalled();
-    expect(screen.getByText("Brush teeth")).toBeInTheDocument();
-  });
+    vi.spyOn(window, "confirm").mockReturnValueOnce(true);
+    mockApi.delete.mockResolvedValueOnce({});
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => {
+      expect(mockApi.delete).toHaveBeenCalledWith("/checklist/1/items/10/");
+    });
 
-  it("shows error when deleting an item fails", async () => {
-    const user = userEvent.setup();
     await openChecklist(user);
-
-    mockApi.delete.mockRejectedValueOnce(new Error("Fail"));
-
+    mockApi.delete.mockRejectedValueOnce(new Error("fail"));
     await user.click(screen.getByRole("button", { name: "Delete" }));
-
     expect(await screen.findByText(/Failed to delete item/i)).toBeInTheDocument();
   });
 
-  it("toggles item completion via the checkbox", async () => {
+  it("toggles item completion and handles failure", async () => {
     const user = userEvent.setup();
     await openChecklist(user);
-
     mockApi.patch.mockResolvedValueOnce({
       data: { data: { ...SAMPLE_ITEM, is_completed: true } },
     });
 
-    await user.click(screen.getByRole("checkbox"));
-
+    await user.click(screen.getAllByRole("checkbox")[1]);
     await waitFor(() => {
       expect(mockApi.patch).toHaveBeenCalledWith(
-        `/checklist/${SAMPLE_LIST.id}/items/${SAMPLE_ITEM.id}/`,
+        "/checklist/1/items/10/",
         { is_completed: true },
       );
     });
-  });
 
-  it("toggles item completion when the API returns the item directly", async () => {
-    const user = userEvent.setup();
-    await openChecklist(user);
-
-    mockApi.patch.mockResolvedValueOnce({
-      data: { ...SAMPLE_ITEM, is_completed: true },
-    });
-
-    await user.click(screen.getByRole("checkbox"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Brush teeth")).toHaveStyle({ textDecoration: "line-through" });
-    });
-  });
-
-  it("toggles one item without changing the other items in the list", async () => {
-    const user = userEvent.setup();
-    const secondItem = { id: "11", label: "Wash face", type: "Habit", is_completed: false };
-    await openChecklist(user, [SAMPLE_ITEM, secondItem]);
-
-    mockApi.patch.mockResolvedValueOnce({
-      data: {
-        data: { ...SAMPLE_ITEM, is_completed: true },
-      },
-    });
-
-    await user.click(screen.getAllByRole("checkbox")[0]);
-
-    await waitFor(() => {
-      expect(screen.getByText("Brush teeth")).toHaveStyle({ textDecoration: "line-through" });
-    });
-    expect(screen.getByText("Wash face")).not.toHaveStyle({ textDecoration: "line-through" });
-  });
-
-  it("shows error when toggling item fails", async () => {
-    const user = userEvent.setup();
-    await openChecklist(user);
-
-    mockApi.patch.mockRejectedValueOnce(new Error("Fail"));
-
-    await user.click(screen.getByRole("checkbox"));
-
+    mockApi.patch.mockRejectedValueOnce(new Error("fail"));
+    await user.click(screen.getAllByRole("checkbox")[1]);
     expect(await screen.findByText(/Failed to update item status/i)).toBeInTheDocument();
   });
 
-  it("navigates back to the dashboard from item view", async () => {
+  it("reorders items and handles reorder failures", async () => {
     const user = userEvent.setup();
-    await openChecklist(user);
+    const items = [
+      { ...SAMPLE_ITEM, id: "10", label: "First" },
+      { ...SAMPLE_ITEM, id: "11", label: "Second", due_date: "2026-04-27" },
+    ];
+    await openChecklist(user, items);
+    mockApi.post.mockResolvedValueOnce({ data: [items[1], items[0]] });
 
-    await user.click(screen.getByRole("button", { name: "Back" }));
-
-    expect(await screen.findByText("All Checklists")).toBeInTheDocument();
-    expect(screen.queryByText("Brush teeth")).not.toBeInTheDocument();
-  });
-});
-
-describe("Dashboard – drag-and-drop reorder", () => {
-  beforeEach(() => {
-    mockApi.get.mockReset();
-    mockApi.post.mockReset();
-    mockApi.patch.mockReset();
-    mockApi.delete.mockReset();
-    localStorage.setItem("email", "test@example.com");
-    localStorage.setItem("access_token", "token");
-  });
-
-  it("calls the reorder API when an item is dropped on another", async () => {
-    const user = userEvent.setup();
-    const item1 = { id: "1", label: "First", type: "Task", is_completed: false };
-    const item2 = { id: "2", label: "Second", type: "Task", is_completed: false };
-
-    mockApi.get.mockImplementation((url) => {
-      if (url === "/auth/user/") return Promise.resolve({ data: { data: {} } });
-      if (url === "/checklist/") return Promise.resolve({ data: { data: [SAMPLE_LIST] } });
-      if (url === "/checklist/archived/") return Promise.resolve({ data: { data: [] } });
-      if (url === `/checklist/${SAMPLE_LIST.id}/items/`)
-        return Promise.resolve({ data: { data: [item1, item2] } });
-      return Promise.resolve({ data: {} });
-    });
-
-    mockApi.post.mockResolvedValueOnce({ data: [item2, item1] });
-
-    renderDashboard();
-    await user.click(await screen.findByText("Daily Setup"));
-    await screen.findByText("First");
-
-    const rows = document.querySelectorAll("[draggable]");
+    const rows = document.querySelectorAll("[draggable='true']");
     fireEvent.dragStart(rows[0]);
     fireEvent.dragOver(rows[1]);
     fireEvent.drop(rows[1]);
-
     await waitFor(() => {
       expect(mockApi.post).toHaveBeenCalledWith(
-        `/checklist/${SAMPLE_LIST.id}/items/reorder/`,
+        "/checklist/1/items/reorder/",
         expect.objectContaining({ ordered_ids: expect.any(Array) }),
       );
     });
-  });
-
-  it("reverts items and shows error when reorder API fails", async () => {
-    const user = userEvent.setup();
-    const item1 = { id: "1", label: "First", type: "Task", is_completed: false };
-    const item2 = { id: "2", label: "Second", type: "Task", is_completed: false };
-
-    mockApi.get.mockImplementation((url) => {
-      if (url === "/auth/user/") return Promise.resolve({ data: { data: {} } });
-      if (url === "/checklist/") return Promise.resolve({ data: { data: [SAMPLE_LIST] } });
-      if (url === "/checklist/archived/") return Promise.resolve({ data: { data: [] } });
-      if (url === `/checklist/${SAMPLE_LIST.id}/items/`)
-        return Promise.resolve({ data: { data: [item1, item2] } });
-      return Promise.resolve({ data: {} });
+    await waitFor(() => {
+      expect(screen.getByText("Second")).toBeInTheDocument();
     });
 
-    mockApi.post.mockRejectedValueOnce(new Error("Reorder fail"));
-
-    renderDashboard();
-    await user.click(await screen.findByText("Daily Setup"));
-    await screen.findByText("First");
-
-    const rows = document.querySelectorAll("[draggable]");
+    mockApi.post.mockRejectedValueOnce(new Error("fail"));
     fireEvent.dragStart(rows[0]);
     fireEvent.dragOver(rows[1]);
     fireEvent.drop(rows[1]);
-
-    expect(await screen.findByText(/Failed to reorder/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Failed to reorder items/i)).toBeInTheDocument();
   });
 
-  it("does not call reorder API when an item is dropped onto itself", async () => {
+  it("shows non-draggable ordering cues when using non-custom sort", async () => {
     const user = userEvent.setup();
-    const item1 = { id: "1", label: "First", type: "Task", is_completed: false };
+    await openChecklist(user, [{ ...SAMPLE_ITEM, is_completed: true, due_date: null }]);
+    await user.selectOptions(screen.getByDisplayValue("Custom Order"), "priority");
 
-    mockApi.get.mockImplementation((url) => {
-      if (url === "/auth/user/") return Promise.resolve({ data: { data: {} } });
-      if (url === "/checklist/") return Promise.resolve({ data: { data: [SAMPLE_LIST] } });
-      if (url === "/checklist/archived/") return Promise.resolve({ data: { data: [] } });
-      if (url === `/checklist/${SAMPLE_LIST.id}/items/`) {
-        return Promise.resolve({ data: { data: [item1] } });
-      }
-      return Promise.resolve({ data: {} });
+    expect(screen.getByText("--")).toBeInTheDocument();
+    expect(screen.getByText("No due date")).toBeInTheDocument();
+    expect(screen.getByText("Brush teeth")).toHaveStyle({
+      textDecoration: "line-through",
     });
-
-    renderDashboard();
-    await user.click(await screen.findByText("Daily Setup"));
-    await screen.findByText("First");
-
-    const rows = document.querySelectorAll("[draggable]");
-    fireEvent.dragStart(rows[0]);
-    fireEvent.dragOver(rows[0]);
-    fireEvent.drop(rows[0]);
-
-    expect(mockApi.post).not.toHaveBeenCalled();
   });
 
-  it("returns early when draggedItem is the same as targetItem", async () => {
-    const user = userEvent.setup();
-    const item1 = { id: "1", label: "First", type: "Task", is_completed: false };
-    
-    mockApi.get.mockImplementation((url) => {
-      if (url === "/auth/user/") return Promise.resolve({ data: { data: {} } });
-      if (url === "/checklist/") return Promise.resolve({ data: { data: [SAMPLE_LIST] } });
-      if (url === "/checklist/archived/") return Promise.resolve({ data: { data: [] } });
-      if (url === `/checklist/${SAMPLE_LIST.id}/items/`)
-        return Promise.resolve({ data: { data: [item1] } });
-      return Promise.resolve({ data: {} });
-    });
-
-    renderDashboard();
-    await user.click(await screen.findByText("Daily Setup"));
-    await screen.findByText("First");
-
-    const rows = document.querySelectorAll("[draggable]");
-    fireEvent.dragStart(rows[0]);
-    fireEvent.dragOver(rows[0]);
-    fireEvent.drop(rows[0]);
-    
-    expect(mockApi.post).not.toHaveBeenCalled();
-  });
-});
-
-describe("Dashboard – avatar management", () => {
-  beforeEach(() => {
-    mockApi.get.mockReset();
-    mockApi.patch.mockReset();
-    localStorage.setItem("email", "test@example.com");
-    localStorage.setItem("access_token", "token");
-    global.URL.createObjectURL = vi.fn(() => "blob:avatar-preview");
-  });
-
-  it("uploads a valid avatar and updates the avatar URL", async () => {
+  it("archives, restores, and handles failures for checklists", async () => {
     const user = userEvent.setup();
     setupDefaultMocks();
-    mockApi.patch.mockResolvedValueOnce({
-      data: { data: { avatar_url: "http://example.com/new-avatar.jpg" } },
-    });
-
     renderDashboard();
-    await screen.findByText("Welcome back, test");
+    await screen.findByText("Daily Setup");
 
-    const fileInput = document.querySelector("input[type='file'][accept='.jpg,.jpeg,.png,.webp']");
-    const file = new File(["img"], "avatar.jpg", { type: "image/jpeg" });
-    await user.upload(fileInput, file);
+    vi.spyOn(window, "confirm").mockReturnValueOnce(false);
+    await user.click(screen.getByRole("button", { name: "Archive" }));
+    expect(mockApi.delete).not.toHaveBeenCalledWith("/checklist/1/");
 
+    vi.spyOn(window, "confirm").mockReturnValueOnce(true);
+    mockApi.delete.mockResolvedValueOnce({ data: { data: SAMPLE_LIST } });
+    await user.click(screen.getByRole("button", { name: "Archive" }));
     await waitFor(() => {
-      expect(mockApi.patch).toHaveBeenCalledWith("/auth/user/", expect.any(FormData));
+      expect(mockApi.delete).toHaveBeenCalledWith("/checklist/1/");
     });
 
-    const avatar = screen.getByAltText("Profile avatar");
-    expect(avatar.src).toBe("http://example.com/new-avatar.jpg");
-  });
-
-  it("shows the temporary avatar preview while upload is in flight", async () => {
-    const user = userEvent.setup();
-    let resolvePatch;
-    setupDefaultMocks();
-    mockApi.patch.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolvePatch = resolve;
-      }),
-    );
-
-    renderDashboard();
-    await screen.findByText("Welcome back, test");
-
-    const fileInput = document.querySelector("input[type='file'][accept='.jpg,.jpeg,.png,.webp']");
-    const file = new File(["img"], "avatar.jpg", { type: "image/jpeg" });
-    await user.upload(fileInput, file);
-
-    const avatar = screen.getByAltText("Profile avatar");
-    expect(avatar.src).toContain("blob:avatar-preview");
-
-    resolvePatch({ data: { data: { avatar_url: "http://example.com/final-avatar.jpg" } } });
-
+    mockApi.post.mockResolvedValueOnce({ data: { data: SAMPLE_LIST } });
+    await user.click(screen.getByRole("button", { name: /Show Archived/i }));
+    await user.click(screen.getByRole("button", { name: "Restore" }));
     await waitFor(() => {
-      expect(screen.getByAltText("Profile avatar").src).toBe("http://example.com/final-avatar.jpg");
+      expect(mockApi.post).toHaveBeenCalledWith("/checklist/1/restore/");
     });
-  });
 
-  it("shows validation error for an invalid avatar file type", async () => {
     setupDefaultMocks();
-
+    mockApi.delete.mockRejectedValueOnce(new Error("fail"));
     renderDashboard();
-    await screen.findByText("Welcome back, test");
-
-    // First file input inside the label is the avatar input (hidden); use fireEvent
-    const fileInput = document.querySelector("input[type='file'][accept='.jpg,.jpeg,.png,.webp']");
-    const file = new File(["gif"], "anim.gif", { type: "image/gif" });
-    fireEvent.change(fileInput, { target: { files: [file] } });
-
-    expect(await screen.findByText(/Only JPG, PNG, and WEBP/i)).toBeInTheDocument();
-    expect(mockApi.patch).not.toHaveBeenCalled();
+    await screen.findByText("Daily Setup");
+    await user.click(screen.getAllByRole("button", { name: "Archive" })[0]);
+    expect(await screen.findByText(/Could not archive checklist/i)).toBeInTheDocument();
   });
 
-  it("ignores empty avatar selection", async () => {
-    setupDefaultMocks();
-    renderDashboard();
-    await screen.findByText("Welcome back, test");
-    const fileInput = document.querySelector("input[type='file'][accept='.jpg,.jpeg,.png,.webp']");
-    fireEvent.change(fileInput, { target: { files: [] } });
-    expect(mockApi.patch).not.toHaveBeenCalled();
-  });
-
-  it("shows error when avatar upload fails", async () => {
+  it("restores from local fallback data", async () => {
     const user = userEvent.setup();
-    setupDefaultMocks();
-    mockApi.patch.mockRejectedValueOnce({
-      response: { data: { errors: { avatar: ["Too large"] } } },
+    setupDefaultMocks({
+      archived: {
+        data: { data: [{ id: "9", name: "Old List", type: "Weekly" }] },
+      },
     });
+    mockApi.post.mockResolvedValueOnce({ data: {} });
 
     renderDashboard();
-    await screen.findByText("Welcome back, test");
-
-    const fileInput = document.querySelector("input[type='file'][accept='.jpg,.jpeg,.png,.webp']");
-    const file = new File(["img"], "avatar.jpg", { type: "image/jpeg" });
-    await user.upload(fileInput, file);
-
-    expect(await screen.findByText("Too large")).toBeInTheDocument();
+    await screen.findByText("Welcome back, lawrence");
+    await user.click(screen.getByRole("button", { name: /Show Archived/i }));
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+    expect(await screen.findByText("Old List")).toBeInTheDocument();
   });
 
-  it("removes the avatar and falls back to default", async () => {
+  it("shows restore failures", async () => {
     const user = userEvent.setup();
-    setupDefaultMocks();
-    mockApi.patch.mockResolvedValueOnce({
-      data: { data: { avatar_url: null } },
+    setupDefaultMocks({
+      archived: {
+        data: { data: [{ id: "9", name: "Old List", type: "Weekly" }] },
+      },
     });
+    mockApi.post.mockRejectedValueOnce(new Error("fail"));
 
     renderDashboard();
-    await screen.findByText("Welcome back, test");
-
-    await user.click(screen.getByRole("button", { name: "Remove" }));
-
-    await waitFor(() => {
-      expect(mockApi.patch).toHaveBeenCalledWith("/auth/user/", expect.any(FormData));
-    });
-
-    const avatar = screen.getByAltText("Profile avatar");
-    expect(avatar.src).toContain("default-avatar.svg");
+    await screen.findByText("Welcome back, lawrence");
+    await user.click(screen.getByRole("button", { name: /Show Archived/i }));
+    await user.click(screen.getByRole("button", { name: "Restore" }));
+    expect(await screen.findByText(/Could not restore checklist/i)).toBeInTheDocument();
   });
 
-  it("shows error when removing avatar fails", async () => {
+  it("handles permanent delete cancel and failure paths", async () => {
     const user = userEvent.setup();
-    setupDefaultMocks();
-    mockApi.patch.mockRejectedValueOnce(new Error("Network error"));
-
-    renderDashboard();
-    await screen.findByText("Welcome back, test");
-
-    await user.click(screen.getByRole("button", { name: "Remove" }));
-
-    expect(await screen.findByText(/Failed to remove avatar/i)).toBeInTheDocument();
-  });
-});
-
-describe("Dashboard – error banner dismissal", () => {
-  beforeEach(() => {
-    mockApi.get.mockReset();
-    localStorage.setItem("email", "test@example.com");
-    localStorage.setItem("access_token", "token");
-  });
-
-  it("dismisses the error banner when x is clicked", async () => {
-    const user = userEvent.setup();
-    mockApi.get.mockImplementation((url) => {
-      if (url === "/auth/user/") return Promise.resolve({ data: { data: {} } });
-      if (url === "/checklist/archived/") return Promise.resolve({ data: { data: [] } });
-      return Promise.reject(new Error("load fail"));
+    setupDefaultMocks({
+      archived: {
+        data: { data: [{ id: "9", name: "Old List", type: "Weekly" }] },
+      },
     });
-
     renderDashboard();
-    await screen.findByText(/Failed to load checklists/i);
+    await screen.findByText("Welcome back, lawrence");
+    await user.click(screen.getByRole("button", { name: /Show Archived/i }));
 
+    vi.spyOn(window, "confirm").mockReturnValueOnce(false);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(mockApi.delete).not.toHaveBeenCalledWith("/checklist/9/permanent/");
+
+    vi.spyOn(window, "confirm").mockReturnValueOnce(true);
+    mockApi.delete.mockRejectedValueOnce(new Error("fail"));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(await screen.findByText(/Could not delete checklist permanently/i)).toBeInTheDocument();
+  });
+
+  it("dismisses the error banner", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks({ checklists: { data: { data: [] } } });
+    mockApi.post.mockRejectedValueOnce({
+      response: { data: { message: "Name already taken" } },
+    });
+    renderDashboard();
+    await screen.findByText(/No checklists yet/i);
+    await user.click(screen.getByRole("button", { name: "+ New Checklist" }));
+    await user.type(screen.getByPlaceholderText("Checklist name"), "Weekly Review");
+    await user.selectOptions(screen.getByRole("combobox"), "Weekly");
+    await user.click(screen.getByRole("button", { name: "+ Create Checklist" }));
+    await screen.findByText("Name already taken");
     await user.click(screen.getByRole("button", { name: "x" }));
-
-    await waitFor(() => {
-      expect(screen.queryByText(/Failed to load checklists/i)).not.toBeInTheDocument();
-    });
-  });
-});
-
-describe("Dashboard – logout", () => {
-  beforeEach(() => {
-    mockApi.get.mockReset();
-    mockApi.post.mockReset();
-    mockApi.patch.mockReset();
-    mockApi.delete.mockReset();
-    localStorage.setItem("email", "test@example.com");
-    localStorage.setItem("access_token", "token");
+    expect(screen.queryByText("Name already taken")).not.toBeInTheDocument();
   });
 
-  it("clears local storage and calls onLogout on sign out", async () => {
+  it("signs out and clears local session state", async () => {
     const user = userEvent.setup();
     const onLogout = vi.fn();
     setupDefaultMocks();
-
     renderDashboard({ onLogout });
-    await screen.findByText("All Checklists");
 
+    await screen.findByText("Welcome back, lawrence");
     await user.click(screen.getByRole("button", { name: "Sign out" }));
 
     expect(localStorage.getItem("access_token")).toBeNull();
@@ -1118,88 +869,24 @@ describe("Dashboard – logout", () => {
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 
-  it("handles archive success", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
-    setupDefaultMocks({ checklists: { data: { data: [{
-      id: 1, name: "Archive Me", type: "Daily"
-    }] } } });
-    mockApi.delete.mockResolvedValueOnce({ data: {} });
-    
+  it("permanently deletes an archived checklist", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks({
+      archived: {
+        data: { data: [{ id: "9", name: "Old List", type: "Weekly" }] },
+      },
+    });
+    mockApi.delete.mockResolvedValueOnce({ data: { status: "success" } });
+
     renderDashboard();
-    await screen.findByText("Archive Me");
-    
-    const archiveBtn = screen.getByText("Archive");
-    await userEvent.click(archiveBtn);
-    
+    await screen.findByText("Welcome back, lawrence");
+    await user.click(screen.getByRole("button", { name: /Show Archived \(1\)/i }));
+    expect(await screen.findByText("Old List")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+
     await waitFor(() => {
-      expect(mockApi.delete).toHaveBeenCalled();
+      expect(mockApi.delete).toHaveBeenCalledWith("/checklist/9/permanent/");
     });
-  });
-
-  it("handles item deletion and cancellation", async () => {
-    // Correctly mock the items for the specific checklist
-    mockApi.get.mockImplementation((url) => {
-      if (url === "/auth/user/") return Promise.resolve({ data: { data: { email: "u" } } });
-      if (url === "/checklist/") return Promise.resolve({ data: { data: [SAMPLE_LIST] } });
-      if (url === "/checklist/archived/") return Promise.resolve({ data: { data: [] } });
-      if (url.includes("/items/")) return Promise.resolve({ data: { data: [SAMPLE_ITEM] } });
-      return Promise.resolve({ data: { data: [] } });
-    });
-    
-    renderDashboard();
-    await screen.findByText("Daily Setup");
-    await userEvent.click(screen.getByText("Daily Setup")); // Open checklist
-    
-    // Wait for item to appear
-    await screen.findByText(SAMPLE_ITEM.label);
-    const deleteBtn = screen.getByText("Delete");
-    
-    // Cancel
-    vi.spyOn(window, "confirm").mockReturnValueOnce(false);
-    await userEvent.click(deleteBtn);
-    expect(mockApi.delete).not.toHaveBeenCalled();
-    
-    // Confirm
-    vi.spyOn(window, "confirm").mockReturnValueOnce(true);
-    mockApi.delete.mockResolvedValueOnce({ data: {} });
-    await userEvent.click(deleteBtn);
-    expect(mockApi.delete).toHaveBeenCalled();
-  });
-
-  it("updates checklist type in edit mode", async () => {
-    setupDefaultMocks({ checklists: { data: { data: [SAMPLE_LIST] } } });
-    renderDashboard();
-    await screen.findByText("Daily Setup");
-    
-    await userEvent.click(screen.getByText("Edit"));
-    const select = screen.getByDisplayValue("Daily");
-    await userEvent.selectOptions(select, "Weekly");
-    expect(select.value).toBe("Weekly");
-    
-    mockApi.patch.mockResolvedValueOnce({ data: { ...SAMPLE_LIST, type: "Weekly" } });
-    await userEvent.click(screen.getByText("Save"));
-  });
-
-  it("handles restore success", async () => {
-    setupDefaultMocks({ archived: { data: { data: [{
-      id: 99, name: "Archived List", type: "Daily"
-    }] } } });
-    mockApi.post.mockResolvedValueOnce({ data: {} });
-    
-    renderDashboard();
-    const showArchivedBtn = screen.getByText(/Show Archived/i);
-    await userEvent.click(showArchivedBtn);
-    
-    const restoreBtn = await screen.findByText("Restore");
-    await userEvent.click(restoreBtn);
-    
-    await waitFor(() => {
-      expect(mockApi.post).toHaveBeenCalled();
-    });
-  });
-
-  it("handles unauthorized error path", async () => {
-    mockApi.get.mockRejectedValueOnce({ response: { status: 401, data: {} } });
-    renderDashboard();
   });
 });

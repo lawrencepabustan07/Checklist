@@ -1,0 +1,96 @@
+name: SAST
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  bandit-backend:
+    name: Bandit Backend Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Bandit
+        run: python -m pip install --upgrade pip bandit
+
+      - name: Run Bandit against Django backend
+        run: |
+          bandit -c .bandit -r Myproject/checklist Myproject/Myproject
+          bandit -c .bandit Myproject/manage.py
+
+  eslint-frontend-security:
+    name: ESLint Frontend Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: Front-end/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: Front-end
+        run: npm ci
+
+      - name: Install ESLint security plugins
+        working-directory: Front-end
+        run: npm install --no-save eslint-plugin-no-secrets eslint-plugin-security
+
+      - name: Run ESLint security rules
+        working-directory: Front-end
+        env:
+          ESLINT_USE_FLAT_CONFIG: "false"
+        run: npx eslint --config ../.eslintrc.json --ext .js,.jsx src
+
+  semgrep-fullstack:
+    name: Semgrep Full Stack Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Semgrep
+        run: python -m pip install --upgrade pip semgrep
+
+      - name: Run Semgrep on frontend and backend
+        run: |
+          semgrep scan \
+            --error \
+            --config p/secrets \
+            --config p/python \
+            --config p/django \
+            --config p/javascript \
+            --config p/react \
+            --exclude Front-end/node_modules \
+            --exclude Front-end/dist \
+            --exclude Front-end/coverage \
+            --exclude Myproject/checklist/migrations \
+            --exclude Myproject/media \
+            --exclude Myproject/htmlcov \
+            Front-end/src Myproject

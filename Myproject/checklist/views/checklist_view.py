@@ -1,9 +1,12 @@
+from datetime import date
+
+from django.db.models import Count
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework import viewsets, status
 from rest_framework.response import Response
-from ..models import Checklist
+from ..models import Checklist, ChecklistItem
 from ..serializers import ChecklistSerializer
 
 
@@ -122,6 +125,22 @@ class ChecklistViewSet(viewsets.ModelViewSet):
             'data': serializer.data
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['delete'], url_path='permanent')
+    def permanent_delete(self, request, pk=None):
+        try:
+            instance = Checklist.objects.get(pk=pk, created_by=request.user)
+        except Checklist.DoesNotExist:
+            return Response({
+                'status': 'error',
+                'message': 'Checklist not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        instance.delete()
+        return Response({
+            'status': 'success',
+            'message': 'Checklist deleted permanently'
+        }, status=status.HTTP_200_OK)
+
     @action(detail=False, methods=['get'], url_path='archived')
     def archived(self, request):
         queryset = Checklist.objects.filter(created_by=request.user, is_archived=True)
@@ -150,3 +169,35 @@ class ChecklistViewSet(viewsets.ModelViewSet):
             'message': 'Checklist restored successfully',
             'data': serializer.data
         }, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='dashboard-analytics')
+    def dashboard_analytics(self, request):
+        base_queryset = self.get_queryset().prefetch_related("items")
+        item_queryset = ChecklistItem.objects.filter(
+            checklist__created_by=request.user,
+            checklist__is_archived=False,
+        )
+
+        total_items = item_queryset.count()
+        completed_items = item_queryset.filter(is_completed=True).count()
+        overdue_items = item_queryset.filter(is_completed=False, due_date__lt=date.today()).count()
+        completion_rate = round((completed_items / total_items) * 100, 2) if total_items else 0
+
+        return Response(
+            {
+                "status": "success",
+                "data": {
+                    "checklists": base_queryset.count(),
+                    "total_items": total_items,
+                    "completed_items": completed_items,
+                    "pending_items": max(total_items - completed_items, 0),
+                    "completion_rate": completion_rate,
+                    "overdue_items": overdue_items,
+                    "by_priority": list(
+                        item_queryset.values("priority").annotate(count=Count("id")).order_by("priority")
+                    ),
+                    "due_today": item_queryset.filter(due_date=date.today(), is_completed=False).count(),
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
