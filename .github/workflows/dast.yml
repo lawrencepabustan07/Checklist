@@ -110,7 +110,7 @@ jobs:
       - name: Run ZAP baseline scan against frontend
         shell: bash
         run: |
-          docker run --rm --network host \
+          docker run --rm --network host --user root \
             -v "${GITHUB_WORKSPACE}:/zap/wrk/:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
@@ -124,7 +124,7 @@ jobs:
       - name: Run ZAP baseline scan against backend API
         shell: bash
         run: |
-          docker run --rm --network host \
+          docker run --rm --network host --user root \
             -v "${GITHUB_WORKSPACE}:/zap/wrk/:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
