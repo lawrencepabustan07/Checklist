@@ -30,8 +30,11 @@ describe("Login", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("Welcome Back")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Sign in with Google/i })).toBeInTheDocument();
+    expect(screen.getByText("Sign in to continue")).toBeInTheDocument();
+    expect(screen.getByText("Use your Google account to open your checklist workspace.")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Continue with Google/i }),
+    ).toBeInTheDocument();
   });
 
   it("redirects to the Auth0 authorize URL when Google sign-in is clicked", async () => {
@@ -43,7 +46,7 @@ describe("Login", () => {
       </MemoryRouter>,
     );
 
-    await user.click(screen.getByRole("button", { name: /Sign in with Google/i }));
+    await user.click(screen.getByRole("button", { name: /Continue with Google/i }));
 
     expect(window.location.href).toBe(
       "https://auth.example.com/authorize?response_type=code&client_id=client-123&redirect_uri=http%3A%2F%2Flocalhost%3A5173%2Fcallback&scope=openid%20profile%20email&connection=google-oauth2",

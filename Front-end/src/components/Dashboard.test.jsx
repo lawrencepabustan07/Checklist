@@ -52,6 +52,7 @@ function setupDefaultMocks({
     data: {
       data: {
         avatar_url: "http://example.com/avatar.svg",
+        is_admin: true,
         theme_preference: "system",
         sort_option: "position",
         sort_direction: "asc",
@@ -149,6 +150,66 @@ describe("Dashboard", () => {
     expect(await screen.findByText("Welcome back, lawrence")).toBeInTheDocument();
     expect(screen.getByText("Dashboard Analytics")).toBeInTheDocument();
     expect(screen.getByText("Total Items")).toBeInTheDocument();
+  });
+
+  it("shows the admin console shortcut for staff users", async () => {
+    setupDefaultMocks({
+      profile: {
+        data: {
+          data: {
+            avatar_url: "http://example.com/avatar.svg",
+            is_admin: true,
+            theme_preference: "system",
+            sort_option: "position",
+            sort_direction: "asc",
+          },
+        },
+      },
+    });
+    renderDashboard();
+
+    expect(await screen.findByText("Welcome back, lawrence")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Admin Console" })).toBeInTheDocument();
+  });
+
+  it("hides checklist and item management controls for non-admin users", async () => {
+    const user = userEvent.setup();
+    setupDefaultMocks({
+      profile: {
+        data: {
+          data: {
+            avatar_url: "http://example.com/avatar.svg",
+            is_admin: false,
+            theme_preference: "system",
+            sort_option: "position",
+            sort_direction: "asc",
+          },
+        },
+      },
+    });
+    mockApi.patch.mockResolvedValueOnce({
+      data: { data: { ...SAMPLE_ITEM, is_completed: true } },
+    });
+
+    renderDashboard();
+    expect(await screen.findByText("Welcome back, lawrence")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "+ New Checklist" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Show Archived/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("Daily Setup"));
+    await screen.findByText("Brush teeth");
+
+    expect(screen.queryByRole("button", { name: "+ Add Item" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await waitFor(() => {
+      expect(mockApi.patch).toHaveBeenCalledWith(
+        "/checklist/1/items/10/",
+        { is_completed: true },
+      );
+    });
   });
 
   it("filters checklists by type and shows count badges", async () => {

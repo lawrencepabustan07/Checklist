@@ -8,8 +8,12 @@ import {
 import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
 import Callback from "./components/Callback";
+import AdminPage from "./components/AdminPage";
 
-//
+function isAdminUser() {
+  return localStorage.getItem("is_admin") === "true";
+}
+
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem("access_token");
   if (!token) {
@@ -21,7 +25,7 @@ function ProtectedRoute({ children }) {
 function PublicRoute({ children }) {
   const token = localStorage.getItem("access_token");
   if (token) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={isAdminUser() ? "/admin" : "/dashboard"} replace />;
   }
   return children;
 }
@@ -49,7 +53,20 @@ function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <Dashboard onLogout={() => setIsLoggedIn(false)} />
+              {isAdminUser() ? (
+                <Navigate to="/admin" replace />
+              ) : (
+                <Dashboard onLogout={() => setIsLoggedIn(false)} />
+              )}
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <AdminPage />
             </ProtectedRoute>
           }
         />
@@ -58,7 +75,7 @@ function App() {
           path="/"
           element={
             isLoggedIn ? (
-              <Navigate to="/dashboard" replace />
+              <Navigate to={isAdminUser() ? "/admin" : "/dashboard"} replace />
             ) : (
               <Navigate to="/login" replace />
             )

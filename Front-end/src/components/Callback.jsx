@@ -50,8 +50,33 @@ export default function Callback() {
 
         localStorage.setItem("access_token", registerData.access_token);
         localStorage.setItem("email", registerData.email);
+        let nextPath = "/dashboard";
 
-        navigate("/dashboard");
+        try {
+          const profileResponse = await fetch(
+            "http://127.0.0.1:8000/api/auth/user/",
+            {
+              headers: {
+                Authorization: `Bearer ${registerData.access_token}`,
+              },
+            },
+          );
+
+          if (profileResponse.ok) {
+            const profileData = await profileResponse.json();
+            const isAdmin = Boolean(profileData?.data?.is_admin);
+            localStorage.setItem("is_admin", String(isAdmin));
+            if (isAdmin) {
+              nextPath = "/admin";
+            }
+          } else {
+            localStorage.setItem("is_admin", "false");
+          }
+        } catch {
+          localStorage.setItem("is_admin", "false");
+        }
+
+        navigate(nextPath);
       } catch (err) {
         console.error("Callback error:", err);
         setError(err.message);

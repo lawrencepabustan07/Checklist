@@ -63,9 +63,20 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
     def _serialize_item(self, item):
         return self.get_serializer(item).data
 
+    def _ensure_admin(self, request):
+        if request.user.is_staff:
+            return None
+        return Response(
+            {"error": "Admin access is required for item management."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     
     def create(self, request, *args, **kwargs):
         """POST /api/checklist/{checklist_pk}/items/"""
+        admin_error = self._ensure_admin(request)
+        if admin_error:
+            return admin_error
         checklist_pk = self.kwargs.get('checklist_pk')
         
         if not checklist_pk:
@@ -157,6 +168,17 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
             return Response({
                 'error': 'Item not found'
             }, status=status.HTTP_404_NOT_FOUND)
+
+        requested_fields = {
+            key for key in request.data.keys()
+            if key not in {"csrfmiddlewaretoken"}
+        }
+        is_completion_only = requested_fields and requested_fields <= {"is_completed"}
+        if not request.user.is_staff and not is_completion_only:
+            return Response(
+                {"error": "You can only mark items as complete or incomplete."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         
         serializer = self.get_serializer(item, data=request.data, partial=True)
         
@@ -177,6 +199,9 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
     
     def destroy(self, request, *args, **kwargs):
         """DELETE /api/checklist/{checklist_pk}/items/{pk}/"""
+        admin_error = self._ensure_admin(request)
+        if admin_error:
+            return admin_error
         checklist_pk = self.kwargs.get('checklist_pk')
         pk = self.kwargs.get('pk')
         
@@ -199,6 +224,9 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'], url_path='reorder')
     def reorder(self, request, checklist_pk=None):
+        admin_error = self._ensure_admin(request)
+        if admin_error:
+            return admin_error
         try:
             checklist = self._get_checklist(checklist_pk, request.user)
         except Checklist.DoesNotExist:
@@ -231,6 +259,9 @@ class ChecklistItemViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["patch"], url_path="bulk-priority")
     def bulk_priority(self, request, checklist_pk=None):
+        admin_error = self._ensure_admin(request)
+        if admin_error:
+            return admin_error
         try:
             checklist = self._get_checklist(checklist_pk, request.user)
         except Checklist.DoesNotExist:

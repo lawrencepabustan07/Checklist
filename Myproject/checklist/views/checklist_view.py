@@ -23,7 +23,21 @@ class ChecklistViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(is_archived=False)
         return queryset
 
+    def _ensure_admin(self, request):
+        if request.user.is_staff:
+            return None
+        return Response(
+            {
+                "status": "error",
+                "message": "Admin access is required for checklist management.",
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     def create(self, request, *args, **kwargs):
+        admin_error = self._ensure_admin(request)
+        if admin_error:
+            return admin_error
         name = request.data.get('name')
         if name and Checklist.objects.filter(name=name, created_by=request.user).exists():
             return Response({
@@ -72,6 +86,9 @@ class ChecklistViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_200_OK)
 
     def update(self, request, *args, **kwargs):
+        admin_error = self._ensure_admin(request)
+        if admin_error:
+            return admin_error
         partial = kwargs.pop('partial', False)
         try:
             instance = self.get_object()
@@ -108,6 +125,9 @@ class ChecklistViewSet(viewsets.ModelViewSet):
         }, status=status.HTTP_400_BAD_REQUEST)
 
     def destroy(self, request, *args, **kwargs):
+        admin_error = self._ensure_admin(request)
+        if admin_error:
+            return admin_error
         try:
             instance = self.get_object()
         except Exception:
@@ -127,6 +147,9 @@ class ChecklistViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['delete'], url_path='permanent')
     def permanent_delete(self, request, pk=None):
+        admin_error = self._ensure_admin(request)
+        if admin_error:
+            return admin_error
         try:
             instance = Checklist.objects.get(pk=pk, created_by=request.user)
         except Checklist.DoesNotExist:
@@ -143,6 +166,9 @@ class ChecklistViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='archived')
     def archived(self, request):
+        admin_error = self._ensure_admin(request)
+        if admin_error:
+            return admin_error
         queryset = Checklist.objects.filter(created_by=request.user, is_archived=True)
         serializer = self.get_serializer(queryset, many=True)
         return Response({
@@ -153,6 +179,9 @@ class ChecklistViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='restore')
     def restore(self, request, pk=None):
+        admin_error = self._ensure_admin(request)
+        if admin_error:
+            return admin_error
         try:
             instance = Checklist.objects.get(pk=pk, created_by=request.user)
         except Checklist.DoesNotExist:

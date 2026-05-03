@@ -33,6 +33,7 @@ API.interceptors.request.use(attachAuthHeader);
 export default function Dashboard({ onLogout }) {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(DEFAULT_AVATAR_IMAGE);
   const [avatarPreview, setAvatarPreview] = useState("");
   const [checklists, setChecklists] = useState([]);
@@ -97,6 +98,8 @@ export default function Dashboard({ onLogout }) {
   const [draggedItemId, setDraggedItemId] = useState(null);
   const actualTheme = resolveTheme(themePreference, systemDarkMode);
   const theme = THEME_TOKENS[actualTheme];
+  const canManageChecklists = isAdmin;
+  const canManageItems = isAdmin;
   const checklistTypeCounts = useMemo(() => {
     const counts = { All: checklists.length };
     for (const tab of CHECKLIST_TYPE_TABS) {
@@ -140,9 +143,11 @@ export default function Dashboard({ onLogout }) {
   const loadProfile = useCallback(async () => {
     try {
       const res = await API.get("/auth/user/");
-      const userData = res.data.data || {};
-      setAvatarUrl(userData.avatar_url || DEFAULT_AVATAR_IMAGE);
-      const nextTheme =
+        const userData = res.data.data || {};
+        setAvatarUrl(userData.avatar_url || DEFAULT_AVATAR_IMAGE);
+        setIsAdmin(Boolean(userData.is_admin));
+        localStorage.setItem("is_admin", String(Boolean(userData.is_admin)));
+        const nextTheme =
         userData.theme_preference ??
         localStorage.getItem("theme_preference") ??
         "system";
@@ -670,6 +675,7 @@ export default function Dashboard({ onLogout }) {
   function handleLogout() {
     localStorage.removeItem("access_token");
     localStorage.removeItem("email");
+    localStorage.removeItem("is_admin");
     onLogout();
     navigate("/login");
   }
@@ -801,6 +807,15 @@ export default function Dashboard({ onLogout }) {
           <button onClick={handleLogout} style={styles(theme).logoutBtn}>
             Sign out
           </button>
+          {isAdmin ? (
+            <button
+              type="button"
+              onClick={() => navigate("/admin")}
+              style={styles(theme).secondaryBtn}
+            >
+              Admin Console
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -840,15 +855,17 @@ export default function Dashboard({ onLogout }) {
                 <h3 style={styles(theme).cardTitle}>All Checklists</h3>
                 <span style={styles(theme).count}>{visibleChecklists.length}</span>
               </div>
-              <button
-                onClick={() => setShowAddList(!showAddList)}
-                style={styles(theme).addBtn}
-              >
-                {showAddList ? "Cancel" : "+ New Checklist"}
-              </button>
+              {canManageChecklists ? (
+                <button
+                  onClick={() => setShowAddList(!showAddList)}
+                  style={styles(theme).addBtn}
+                >
+                  {showAddList ? "Cancel" : "+ New Checklist"}
+                </button>
+              ) : null}
             </div>
 
-            {showAddList && (
+            {canManageChecklists && showAddList && (
               <form onSubmit={handleAddList} style={styles(theme).form}>
                 <input
                   type="text"
@@ -925,7 +942,7 @@ export default function Dashboard({ onLogout }) {
             <div style={styles(theme).checklistGrid}>
               {visibleChecklists.map((list) => (
                 <div key={list.id} style={styles(theme).checklistCard}>
-                  {editingChecklist?.id === list.id ? (
+                  {canManageChecklists && editingChecklist?.id === list.id ? (
                     <form
                       onSubmit={handleUpdateChecklist}
                       style={styles(theme).editChecklistForm}
@@ -1008,26 +1025,28 @@ export default function Dashboard({ onLogout }) {
                         </div>
                       </div>
 
-                      <div style={styles(theme).checklistActions}>
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            startEditingChecklist(list);
-                          }}
-                          style={styles(theme).editBtn}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            handleArchiveChecklist(list.id);
-                          }}
-                          style={styles(theme).deleteChecklistBtn}
-                        >
-                          Archive
-                        </button>
-                      </div>
+                      {canManageChecklists ? (
+                        <div style={styles(theme).checklistActions}>
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              startEditingChecklist(list);
+                            }}
+                            style={styles(theme).editBtn}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleArchiveChecklist(list.id);
+                            }}
+                            style={styles(theme).deleteChecklistBtn}
+                          >
+                            Archive
+                          </button>
+                        </div>
+                      ) : null}
                     </>
                   )}
                 </div>
@@ -1040,57 +1059,59 @@ export default function Dashboard({ onLogout }) {
               </p>
             )}
 
-            <div style={styles(theme).archivedSection}>
-              <button
-                type="button"
-                onClick={() => setShowArchived(!showArchived)}
-                style={styles(theme).archiveToggle}
-              >
-                {showArchived
-                  ? "Hide Archived"
-                  : `Show Archived (${archivedChecklists.length})`}
-              </button>
+            {canManageChecklists ? (
+              <div style={styles(theme).archivedSection}>
+                <button
+                  type="button"
+                  onClick={() => setShowArchived(!showArchived)}
+                  style={styles(theme).archiveToggle}
+                >
+                  {showArchived
+                    ? "Hide Archived"
+                    : `Show Archived (${archivedChecklists.length})`}
+                </button>
 
-              {showArchived && (
-                <div style={styles(theme).archivedList}>
-                  {archivedChecklists.length === 0 ? (
-                    <p style={styles(theme).muted}>No archived checklists yet.</p>
-                  ) : (
-                    archivedChecklists.map((list) => (
-                      <div key={list.id} style={styles(theme).archivedCard}>
-                        <div style={styles(theme).archivedCardInfo}>
-                          <img
-                            src={getChecklistImageUrl(list)}
-                            alt={`${list.name} archived cover`}
-                            style={styles(theme).archivedImage}
-                          />
-                          <div>
-                            <div style={styles(theme).checklistName}>{list.name}</div>
-                            <div style={styles(theme).checklistType}>{list.type}</div>
+                {showArchived && (
+                  <div style={styles(theme).archivedList}>
+                    {archivedChecklists.length === 0 ? (
+                      <p style={styles(theme).muted}>No archived checklists yet.</p>
+                    ) : (
+                      archivedChecklists.map((list) => (
+                        <div key={list.id} style={styles(theme).archivedCard}>
+                          <div style={styles(theme).archivedCardInfo}>
+                            <img
+                              src={getChecklistImageUrl(list)}
+                              alt={`${list.name} archived cover`}
+                              style={styles(theme).archivedImage}
+                            />
+                            <div>
+                              <div style={styles(theme).checklistName}>{list.name}</div>
+                              <div style={styles(theme).checklistType}>{list.type}</div>
+                            </div>
+                          </div>
+                          <div style={styles(theme).itemActions}>
+                            <button
+                              type="button"
+                              style={styles(theme).saveBtn}
+                              onClick={() => handleRestoreChecklist(list.id)}
+                            >
+                              Restore
+                            </button>
+                            <button
+                              type="button"
+                              style={styles(theme).deleteBtn}
+                              onClick={() => handleDeleteChecklistPermanently(list.id)}
+                            >
+                              Delete
+                            </button>
                           </div>
                         </div>
-                        <div style={styles(theme).itemActions}>
-                          <button
-                            type="button"
-                            style={styles(theme).saveBtn}
-                            onClick={() => handleRestoreChecklist(list.id)}
-                          >
-                            Restore
-                          </button>
-                          <button
-                            type="button"
-                            style={styles(theme).deleteBtn}
-                            onClick={() => handleDeleteChecklistPermanently(list.id)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : (
@@ -1109,15 +1130,17 @@ export default function Dashboard({ onLogout }) {
                   <span style={styles(theme).typeBadge}>{selectedChecklist.type}</span>
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  setShowAddItem(!showAddItem);
-                  setEditingItem(null);
-                }}
-                style={styles(theme).addBtn}
-              >
-                {showAddItem ? "Cancel" : "+ Add Item"}
-              </button>
+              {canManageItems ? (
+                <button
+                  onClick={() => {
+                    setShowAddItem(!showAddItem);
+                    setEditingItem(null);
+                  }}
+                  style={styles(theme).addBtn}
+                >
+                  {showAddItem ? "Cancel" : "+ Add Item"}
+                </button>
+              ) : null}
             </div>
 
             {renderAnalyticsBlock(checklistAnalytics)}
@@ -1189,7 +1212,7 @@ export default function Dashboard({ onLogout }) {
               </div>
             </div>
 
-            {showAddItem && (
+            {canManageItems && showAddItem && (
               <form onSubmit={handleAddItem} style={styles(theme).form}>
                 <input
                   type="text"
@@ -1232,7 +1255,7 @@ export default function Dashboard({ onLogout }) {
               </form>
             )}
 
-            {selectedItemIds.length > 0 && (
+            {canManageItems && selectedItemIds.length > 0 && (
               <form onSubmit={handleBulkPriorityChange} style={styles(theme).bulkCard}>
                 <span style={styles(theme).smallLabel}>
                   {selectedItemIds.length} selected
@@ -1283,12 +1306,12 @@ export default function Dashboard({ onLogout }) {
             {items.length > 0 && (
               <div style={styles(theme).itemsContainer}>
                 <div style={styles(theme).itemsHeader}>
-                  <div>Select</div>
+                  <div>{canManageItems ? "Select" : "View"}</div>
                   <div>Status</div>
                   <div>Label</div>
                   <div>Due</div>
                   <div>Priority</div>
-                  <div>Actions</div>
+                  <div>{canManageItems ? "Actions" : "Progress"}</div>
                 </div>
                 {items.map((item) => {
                   const dueBadge = getDueBadge(item.due_date);
@@ -1296,11 +1319,12 @@ export default function Dashboard({ onLogout }) {
                   return (
                     <div
                       key={item.id}
-                      draggable={!editingItem && sortOption === "position"}
+                      draggable={canManageItems && !editingItem && sortOption === "position"}
                       onDragStart={() => setDraggedItemId(item.id)}
                       onDragOver={(event) => event.preventDefault()}
                       onDrop={() => {
                         if (
+                          canManageItems &&
                           draggedItemId &&
                           draggedItemId !== item.id &&
                           sortOption === "position"
@@ -1312,7 +1336,7 @@ export default function Dashboard({ onLogout }) {
                         setDraggedItemId(null);
                       }}
                     >
-                      {editingItem?.id === item.id ? (
+                      {canManageItems && editingItem?.id === item.id ? (
                         <form onSubmit={handleUpdateItem} style={styles(theme).editRow}>
                           <input
                             value={editLabel}
@@ -1357,21 +1381,25 @@ export default function Dashboard({ onLogout }) {
                       ) : (
                         <div style={styles(theme).itemRow}>
                           <div>
-                            <input
-                              type="checkbox"
-                              checked={selectedItemIds.includes(item.id)}
-                              onChange={() =>
-                                setSelectedItemIds((current) =>
-                                  current.includes(item.id)
-                                    ? current.filter((id) => id !== item.id)
-                                    : [...current, item.id],
-                                )
-                              }
-                            />
+                            {canManageItems ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedItemIds.includes(item.id)}
+                                onChange={() =>
+                                  setSelectedItemIds((current) =>
+                                    current.includes(item.id)
+                                      ? current.filter((id) => id !== item.id)
+                                      : [...current, item.id],
+                                  )
+                                }
+                              />
+                            ) : (
+                              <span style={styles(theme).mutedText}>View</span>
+                            )}
                           </div>
                           <div style={styles(theme).itemStatus}>
                             <span style={styles(theme).dragHandle}>
-                              {sortOption === "position" ? "::" : "--"}
+                              {canManageItems && sortOption === "position" ? "::" : "--"}
                             </span>
                             <input
                               type="checkbox"
@@ -1405,18 +1433,26 @@ export default function Dashboard({ onLogout }) {
                             </span>
                           </div>
                           <div style={styles(theme).itemActions}>
-                            <button
-                              onClick={() => startEditingItem(item)}
-                              style={styles(theme).editBtn}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDeleteItem(item.id)}
-                              style={styles(theme).deleteBtn}
-                            >
-                              Delete
-                            </button>
+                            {canManageItems ? (
+                              <>
+                                <button
+                                  onClick={() => startEditingItem(item)}
+                                  style={styles(theme).editBtn}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteItem(item.id)}
+                                  style={styles(theme).deleteBtn}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            ) : (
+                              <span style={styles(theme).mutedText}>
+                                {item.is_completed ? "Completed" : "Pending"}
+                              </span>
+                            )}
                           </div>
                         </div>
                       )}

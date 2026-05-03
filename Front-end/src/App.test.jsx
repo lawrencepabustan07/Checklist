@@ -29,6 +29,10 @@ vi.mock("./components/Callback", () => ({
   default: () => <div data-testid="callback-screen">Callback Screen</div>,
 }));
 
+vi.mock("./components/AdminPage", () => ({
+  default: () => <div data-testid="admin-screen">Admin Screen</div>,
+}));
+
 describe("App routing", () => {
   beforeEach(() => {
     window.history.pushState({}, "", "/");
@@ -49,6 +53,14 @@ describe("App routing", () => {
     expect(await screen.findByTestId("dashboard-screen")).toBeInTheDocument();
   });
 
+  it("sends authenticated admins to the admin console from root", async () => {
+    localStorage.setItem("access_token", "token");
+    localStorage.setItem("is_admin", "true");
+    window.history.pushState({}, "", "/");
+    render(<App />);
+    expect(await screen.findByTestId("admin-screen")).toBeInTheDocument();
+  });
+
   it("sends unauthenticated users to login if they try to access dashboard", async () => {
     window.history.pushState({}, "", "/dashboard");
     render(<App />);
@@ -62,10 +74,33 @@ describe("App routing", () => {
     expect(await screen.findByTestId("dashboard-screen")).toBeInTheDocument();
   });
 
+  it("redirects authenticated admins away from login to admin", async () => {
+    localStorage.setItem("access_token", "token");
+    localStorage.setItem("is_admin", "true");
+    window.history.pushState({}, "", "/login");
+    render(<App />);
+    expect(await screen.findByTestId("admin-screen")).toBeInTheDocument();
+  });
+
   it("renders the callback screen at /callback", async () => {
     window.history.pushState({}, "", "/callback");
     render(<App />);
     expect(await screen.findByTestId("callback-screen")).toBeInTheDocument();
+  });
+
+  it("renders the admin screen for authenticated users", async () => {
+    localStorage.setItem("access_token", "token");
+    window.history.pushState({}, "", "/admin");
+    render(<App />);
+    expect(await screen.findByTestId("admin-screen")).toBeInTheDocument();
+  });
+
+  it("redirects authenticated admins away from dashboard to admin", async () => {
+    localStorage.setItem("access_token", "token");
+    localStorage.setItem("is_admin", "true");
+    window.history.pushState({}, "", "/dashboard");
+    render(<App />);
+    expect(await screen.findByTestId("admin-screen")).toBeInTheDocument();
   });
 
   it("handles unknown routes by redirecting to root (which goes to login if unauth)", async () => {

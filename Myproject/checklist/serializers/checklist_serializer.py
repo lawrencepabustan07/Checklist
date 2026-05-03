@@ -13,7 +13,7 @@ class ChecklistSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Checklist
-        fields = ['id', 'name', 'type', 'image', 'image_url', 'remove_image', 'is_archived', 'items']
+        fields = ['id', 'name', 'type', 'image', 'image_url', 'remove_image', 'is_archived', 'created_at', 'updated_at', 'items']
         read_only_fields = ['created_by', 'created_at', 'updated_at'] 
 
     # ========== CUSTOM VALIDATION FOR NAME ==========

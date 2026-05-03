@@ -17,4 +17,6 @@ class ChecklistItemSerializer(serializers.ModelSerializer):
             "priority",
             "priority_label",
             "completed_at",
+            "created_at",
+            "updated_at",
         ]

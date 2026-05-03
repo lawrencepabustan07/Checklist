@@ -4,9 +4,26 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "Myproject/**"
+      - "Front-end/**"
+      - ".github/workflows/sast.yml"
+      - ".pre-commit-config.yaml"
+      - ".eslintrc.json"
+      - ".bandit"
+      - "setup-local-sast.sh"
   pull_request:
     branches:
       - main
+    paths:
+      - "Myproject/**"
+      - "Front-end/**"
+      - ".github/workflows/sast.yml"
+      - ".pre-commit-config.yaml"
+      - ".eslintrc.json"
+      - ".bandit"
+      - "setup-local-sast.sh"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -28,10 +45,28 @@ jobs:
       - name: Install Bandit
         run: python -m pip install --upgrade pip bandit
 
+      - name: Prepare security reports directory
+        run: mkdir -p security-reports
+
       - name: Run Bandit against Django backend
+        shell: bash
         run: |
-          bandit --ini .bandit -r Myproject/checklist Myproject/Myproject
-          bandit --ini .bandit Myproject/manage.py
+          set +e
+          bandit --ini .bandit -f json -o security-reports/bandit-backend.json -r Myproject/checklist Myproject/Myproject
+          bandit_backend_status=$?
+          bandit --ini .bandit -f json -o security-reports/bandit-manage.json Myproject/manage.py
+          bandit_manage_status=$?
+          if [[ $bandit_backend_status -ne 0 || $bandit_manage_status -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Upload Bandit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-bandit-reports
+          path: security-reports/bandit-*.json
+          retention-days: 7
 
   eslint-frontend-security:
     name: ESLint Frontend Security Scan
@@ -60,7 +95,17 @@ jobs:
         working-directory: Front-end
         env:
           ESLINT_USE_FLAT_CONFIG: "false"
-        run: npx eslint --resolve-plugins-relative-to . --config ../.eslintrc.json --ext .js,.jsx src
+        run: |
+          mkdir -p ../security-reports
+          npx eslint --resolve-plugins-relative-to . --config ../.eslintrc.json --ext .js,.jsx -f json -o ../security-reports/eslint-security.json src
+
+      - name: Upload ESLint security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-eslint-report
+          path: security-reports/eslint-security.json
+          retention-days: 7
 
   semgrep-fullstack:
     name: Semgrep Full Stack Scan
@@ -78,10 +123,17 @@ jobs:
       - name: Install Semgrep
         run: python -m pip install --upgrade pip semgrep
 
+      - name: Prepare security reports directory
+        run: mkdir -p security-reports
+
       - name: Run Semgrep on frontend and backend
+        shell: bash
         run: |
+          set +e
           semgrep scan \
             --error \
+            --sarif \
+            --output security-reports/semgrep.sarif \
             --config p/secrets \
             --config p/python \
             --config p/django \
@@ -94,3 +146,19 @@ jobs:
             --exclude Myproject/media \
             --exclude Myproject/htmlcov \
             Front-end/src Myproject
+          semgrep_status=$?
+          exit $semgrep_status
+
+      - name: Upload Semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-reports/semgrep.sarif
+
+      - name: Upload Semgrep report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-semgrep-report
+          path: security-reports/semgrep.sarif
+          retention-days: 7

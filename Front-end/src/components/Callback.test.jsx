@@ -47,10 +47,16 @@ describe("Callback", () => {
 
   it("stores auth data and navigates to dashboard on successful callback", async () => {
     window.history.pushState({}, "", "/callback?code=abc123");
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ access_token: " external-token " }),
-    });
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: " external-token " }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { is_admin: false } }),
+      });
     registerMock.mockResolvedValue({
       data: {
         access_token: "internal-token",
@@ -70,7 +76,41 @@ describe("Callback", () => {
 
     expect(localStorage.getItem("access_token")).toBe("internal-token");
     expect(localStorage.getItem("email")).toBe("lawrence@example.com");
+    expect(localStorage.getItem("is_admin")).toBe("false");
     expect(navigateMock).toHaveBeenCalledWith("/dashboard");
+  });
+
+  it("navigates admins to the admin console after successful callback", async () => {
+    window.history.pushState({}, "", "/callback?code=admin123");
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: " external-token " }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { is_admin: true } }),
+      });
+    registerMock.mockResolvedValue({
+      data: {
+        access_token: "internal-token",
+        email: "admin@example.com",
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <Callback />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(registerMock).toHaveBeenCalledWith("external-token");
+    });
+
+    expect(localStorage.getItem("is_admin")).toBe("true");
+    expect(navigateMock).toHaveBeenCalledWith("/admin");
   });
 
   it("shows fetch/register errors and redirects back to login", async () => {
@@ -111,10 +151,16 @@ describe("Callback", () => {
 
   it("runs the callback flow only once in StrictMode", async () => {
     window.history.pushState({}, "", "/callback?code=abc123");
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ access_token: " external-token " }),
-    });
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: " external-token " }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { is_admin: false } }),
+      });
     registerMock.mockResolvedValue({
       data: {
         access_token: "internal-token",
@@ -131,7 +177,7 @@ describe("Callback", () => {
     );
 
     await waitFor(() => {
-      expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+      expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     });
   });
 });

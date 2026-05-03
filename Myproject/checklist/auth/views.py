@@ -1,6 +1,7 @@
 import jwt as pyjwt
 import os
 from datetime import datetime, timedelta
+from django.utils import timezone
 from django.core.files.uploadedfile import UploadedFile
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -10,7 +11,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 import requests
 from django.conf import settings
 from django.contrib.auth.models import User
-from checklist.models import UserProfile
+from checklist.models import LoginActivity, UserProfile
 
 
 DEFAULT_AVATAR_URL = f"{settings.MEDIA_URL}profiles/default-avatar.svg"
@@ -25,6 +26,20 @@ def get_or_create_profile(user):
 def get_avatar_url(request, profile):
     avatar_url = profile.avatar.url if profile.avatar else DEFAULT_AVATAR_URL
     return request.build_absolute_uri(avatar_url)
+
+
+def record_login_activity(user, request, provider=LoginActivity.PROVIDER_AUTH0):
+    profile = get_or_create_profile(user)
+    now = timezone.now()
+    profile.last_login_at = now
+    profile.archived_at = None if user.is_active else profile.archived_at
+    profile.save(update_fields=["last_login_at", "archived_at"])
+    LoginActivity.objects.create(
+        user=user,
+        provider=provider,
+        ip_address=request.META.get("REMOTE_ADDR", "") or "",
+        user_agent=request.META.get("HTTP_USER_AGENT", "") or "",
+    )
 
 
 def validate_avatar(file: UploadedFile | None):
@@ -106,7 +121,12 @@ class Auth0UserView(APIView):
             'data': {
                 'id': request.user.id,
                 'email': request.user.email,
+                'username': request.user.username,
+                'is_admin': request.user.is_staff,
+                'is_active': request.user.is_active,
                 'avatar_url': get_avatar_url(request, profile),
+                'archived_at': profile.archived_at,
+                'last_login_at': profile.last_login_at,
                 'theme_preference': profile.theme_preference,
                 'sort_option': profile.sort_option,
                 'sort_direction': profile.sort_direction,
@@ -152,7 +172,12 @@ class Auth0UserView(APIView):
             'data': {
                 'id': request.user.id,
                 'email': request.user.email,
+                'username': request.user.username,
+                'is_admin': request.user.is_staff,
+                'is_active': request.user.is_active,
                 'avatar_url': get_avatar_url(request, profile),
+                'archived_at': profile.archived_at,
+                'last_login_at': profile.last_login_at,
                 'theme_preference': profile.theme_preference,
                 'sort_option': profile.sort_option,
                 'sort_direction': profile.sort_direction,
@@ -213,12 +238,20 @@ class RegisterView(APIView):
             )
             get_or_create_profile(user)
 
+            if not user.is_active:
+                return Response({
+                    'status': 'error',
+                    'message': 'This account has been deactivated'
+                }, status=403)
+
             
             access_token = pyjwt.encode({
                 'user_id': user.id,
                 'email': user.email,
                 'exp': datetime.utcnow() + timedelta(days=1)
             }, settings.SECRET_KEY, algorithm='HS256')
+
+            record_login_activity(user, request)
 
             return Response({
                 'status': 'success',

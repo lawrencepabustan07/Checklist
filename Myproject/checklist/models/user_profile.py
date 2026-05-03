@@ -22,6 +22,8 @@ class UserProfile(models.Model):
         related_name="profile",
     )
     avatar = models.FileField(upload_to="profiles/", null=True, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    last_login_at = models.DateTimeField(null=True, blank=True)
     theme_preference = models.CharField(
         max_length=20,
         choices=THEME_CHOICES,

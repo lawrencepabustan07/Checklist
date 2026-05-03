@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: bandit-backend
         name: Bandit backend security scan
-        entry: bandit --ini .bandit -r Myproject/checklist Myproject/Myproject
+        entry: sh -c 'bandit --ini .bandit -r Myproject/checklist Myproject/Myproject && bandit --ini .bandit Myproject/manage.py'
         language: system
         pass_filenames: false
         files: ^Myproject/.*\.py$

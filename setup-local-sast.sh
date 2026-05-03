@@ -31,3 +31,8 @@ echo
 echo "Local SAST setup complete."
 echo "Run all checks with:"
 echo "  pre-commit run --all-files"
+echo
+echo "Security reports in CI are uploaded as artifacts from:"
+echo "  - Bandit JSON"
+echo "  - ESLint security JSON"
+echo "  - Semgrep SARIF"

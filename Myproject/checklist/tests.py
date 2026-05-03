@@ -19,7 +19,7 @@ from rest_framework.test import APIClient, APITestCase
 from rest_framework.exceptions import AuthenticationFailed
 from unittest.mock import patch, Mock, PropertyMock
 
-from .models import Checklist, ChecklistItem, UserProfile
+from .models import Checklist, ChecklistItem, LoginActivity, UserProfile
 from .serializers import ChecklistSerializer, ChecklistItemSerializer
 from .auth.authentication import Auth0Authentication
 from .views.error_handlers import error_404, error_500
@@ -218,6 +218,8 @@ class Auth0UserViewTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["data"]["email"], self.user.email)
         self.assertIn("avatar_url", response.data["data"])
+        self.assertFalse(response.data["data"]["is_admin"])
+        self.assertTrue(response.data["data"]["is_active"])
 
     @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
     def test_authenticated_user_can_update_avatar(self):
@@ -288,6 +290,30 @@ class RegisterViewTests(APITestCase):
         self.assertEqual(response.data["email"], "newuser@example.com")
         self.assertTrue(User.objects.filter(email="newuser@example.com").exists())
         self.assertTrue(UserProfile.objects.filter(user__email="newuser@example.com").exists())
+        self.assertEqual(LoginActivity.objects.filter(user__email="newuser@example.com").count(), 1)
+
+    @patch("checklist.auth.views.requests.get")
+    def test_register_rejects_inactive_user(self, mock_get):
+        user = User.objects.create_user(
+            username="inactive-user",
+            email="inactive@example.com",
+            password="pass1234",
+            is_active=False,
+        )
+        UserProfile.objects.create(user=user)
+        mock_get.return_value = Mock(
+            status_code=200,
+            json=Mock(return_value={"email": "inactive@example.com"}),
+        )
+
+        response = self.client.post(
+            self.url,
+            {"method": "auth0", "credential": "valid-token"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.data["message"], "This account has been deactivated")
 
     @patch("checklist.auth.views.requests.get")
     def test_register_returns_401_when_userinfo_verification_fails(self, mock_get):
@@ -324,6 +350,14 @@ class Auth0AuthenticationTests(TestCase):
 
     def test_expired_hs256_token_raises_authentication_failed(self):
         token = _make_jwt(self.user, exp_delta=timedelta(seconds=-1))
+        with self.assertRaises(AuthenticationFailed):
+            self.auth.authenticate(self._request(f"Bearer {token}"))
+
+    def test_inactive_hs256_user_raises_authentication_failed(self):
+        self.user.is_active = False
+        self.user.save(update_fields=["is_active"])
+        token = _make_jwt(self.user)
+
         with self.assertRaises(AuthenticationFailed):
             self.auth.authenticate(self._request(f"Bearer {token}"))
 
@@ -424,6 +458,8 @@ class ChecklistApiTests(APITestCase):
         self.user = User.objects.create_user(
             username="owner", email="owner@example.com", password="pass1234"
         )
+        self.user.is_staff = True
+        self.user.save(update_fields=["is_staff"])
         self.other_user = User.objects.create_user(
             username="other", email="other@example.com", password="pass1234"
         )
@@ -694,6 +730,55 @@ class ChecklistApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(Checklist.objects.filter(id=checklist.id).exists())
 
+    def test_non_admin_cannot_manage_checklists(self):
+        member = User.objects.create_user(
+            username="member-owner",
+            email="member-owner@example.com",
+            password="pass1234",
+        )
+        checklist = Checklist.objects.create(
+            name="Member Checklist",
+            type="Daily",
+            created_by=member,
+        )
+        self.client.force_authenticate(user=member)
+
+        create_response = self.client.post(
+            "/api/checklist/",
+            {"name": "Blocked", "type": "Weekly"},
+            format="json",
+        )
+        update_response = self.client.patch(
+            f"/api/checklist/{checklist.id}/",
+            {"name": "Blocked Update"},
+            format="json",
+        )
+        archive_response = self.client.delete(f"/api/checklist/{checklist.id}/")
+
+        self.assertEqual(create_response.status_code, 403)
+        self.assertEqual(update_response.status_code, 403)
+        self.assertEqual(archive_response.status_code, 403)
+
+    def test_non_admin_cannot_access_archived_management_endpoints(self):
+        member = User.objects.create_user(
+            username="member-archive",
+            email="member-archive@example.com",
+            password="pass1234",
+        )
+        archived = Checklist.objects.create(
+            name="Archived Member Checklist",
+            type="Daily",
+            created_by=member,
+            is_archived=True,
+        )
+        self.client.force_authenticate(user=member)
+
+        archived_response = self.client.get("/api/checklist/archived/")
+        restore_response = self.client.post(f"/api/checklist/{archived.id}/restore/")
+
+        self.assertEqual(archived_response.status_code, 403)
+        self.assertEqual(restore_response.status_code, 403)
+
 
 # ============================================================
 # 5. CHECKLIST ITEM API TESTS
@@ -705,6 +790,8 @@ class ChecklistItemApiTests(APITestCase):
         self.user = User.objects.create_user(
             username="items-user", email="items@example.com", password="pass1234"
         )
+        self.user.is_staff = True
+        self.user.save(update_fields=["is_staff"])
         self.client.force_authenticate(user=self.user)
         self.checklist = Checklist.objects.create(
             name="Release Checklist",
@@ -1029,6 +1116,52 @@ class ChecklistItemApiTests(APITestCase):
         self.assertEqual(response.data["completed_items"], 1)
         self.assertNotIn("weekly_activity", response.data)
 
+    def test_non_admin_can_only_toggle_item_completion(self):
+        member = User.objects.create_user(
+            username="member-items",
+            email="member-items@example.com",
+            password="pass1234",
+        )
+        checklist = Checklist.objects.create(
+            name="Member Visible Checklist",
+            type="Daily",
+            created_by=member,
+        )
+        item = ChecklistItem.objects.create(
+            checklist=checklist,
+            label="Read update",
+            type="Task",
+        )
+        self.client.force_authenticate(user=member)
+
+        update_response = self.client.patch(
+            f"/api/checklist/{checklist.id}/items/{item.id}/",
+            {"is_completed": True},
+            format="json",
+        )
+        item.refresh_from_db()
+
+        self.assertEqual(update_response.status_code, 200)
+        self.assertTrue(item.is_completed)
+
+        blocked_update = self.client.patch(
+            f"/api/checklist/{checklist.id}/items/{item.id}/",
+            {"label": "Reworded"},
+            format="json",
+        )
+        blocked_create = self.client.post(
+            f"/api/checklist/{checklist.id}/items/",
+            {"label": "Blocked", "type": "Task"},
+            format="json",
+        )
+        blocked_delete = self.client.delete(
+            f"/api/checklist/{checklist.id}/items/{item.id}/"
+        )
+
+        self.assertEqual(blocked_update.status_code, 403)
+        self.assertEqual(blocked_create.status_code, 403)
+        self.assertEqual(blocked_delete.status_code, 403)
+
 
 class DashboardAnalyticsApiTests(APITestCase):
     def setUp(self):
@@ -1056,6 +1189,268 @@ class DashboardAnalyticsApiTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["data"]["checklists"], 1)
         self.assertEqual(response.data["data"]["total_items"], 1)
+
+
+class AdminApiTests(APITestCase):
+    def setUp(self):
+        self.admin_user = User.objects.create_user(
+            username="admin-user",
+            email="admin@example.com",
+            password="pass1234",
+            is_staff=True,
+        )
+        UserProfile.objects.create(user=self.admin_user)
+        self.member = User.objects.create_user(
+            username="member-user",
+            email="member@example.com",
+            password="pass1234",
+        )
+        UserProfile.objects.create(user=self.member)
+        self.other_member = User.objects.create_user(
+            username="other-user",
+            email="other@example.com",
+            password="pass1234",
+        )
+        UserProfile.objects.create(user=self.other_member)
+        self.client.force_authenticate(user=self.admin_user)
+
+    def test_admin_user_endpoint_returns_admin_flag(self):
+        response = self.client.get("/api/auth/user/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["data"]["is_admin"])
+
+    def test_non_admin_cannot_access_admin_endpoints(self):
+        self.client.force_authenticate(user=self.member)
+
+        response = self.client.get("/api/admin/users/")
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_users_endpoint_returns_checklist_metrics(self):
+        completed_checklist = Checklist.objects.create(
+            name="Completed Admin Checklist",
+            type="Daily",
+            created_by=self.member,
+        )
+        ChecklistItem.objects.create(
+            checklist=completed_checklist,
+            label="Done",
+            type="Task",
+            is_completed=True,
+            position=1,
+        )
+
+        pending_checklist = Checklist.objects.create(
+            name="Pending Admin Checklist",
+            type="Weekly",
+            created_by=self.member,
+        )
+        ChecklistItem.objects.create(
+            checklist=pending_checklist,
+            label="Todo",
+            type="Task",
+            is_completed=False,
+            position=1,
+        )
+
+        response = self.client.get("/api/admin/users/")
+
+        self.assertEqual(response.status_code, 200)
+        member_summary = next(
+            item for item in response.data["data"] if item["email"] == self.member.email
+        )
+        self.assertEqual(member_summary["total_checklists"], 2)
+        self.assertEqual(member_summary["completed_checklists"], 1)
+        self.assertEqual(member_summary["pending_checklists"], 1)
+        self.assertEqual(member_summary["completion_rate"], 50.0)
+
+    def test_admin_can_promote_and_archive_user(self):
+        response = self.client.patch(
+            f"/api/admin/users/{self.member.id}/",
+            {"is_admin": True, "is_active": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.member.refresh_from_db()
+        self.member.profile.refresh_from_db()
+        self.assertTrue(self.member.is_staff)
+        self.assertFalse(self.member.is_active)
+        self.assertIsNotNone(self.member.profile.archived_at)
+
+    def test_admin_user_activity_endpoint_returns_login_history(self):
+        LoginActivity.objects.create(user=self.member, provider="auth0", ip_address="127.0.0.1")
+        LoginActivity.objects.create(user=self.member, provider="auth0", ip_address="10.0.0.2")
+
+        response = self.client.get(f"/api/admin/users/{self.member.id}/activity/?limit=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["data"][0]["provider"], "auth0")
+
+    def test_admin_insights_endpoint_returns_leaderboard_data(self):
+        checklist = Checklist.objects.create(
+            name="Insights Checklist",
+            type="Daily",
+            created_by=self.member,
+        )
+        ChecklistItem.objects.create(
+            checklist=checklist,
+            label="Done item",
+            type="Task",
+            is_completed=True,
+            position=1,
+        )
+
+        response = self.client.get("/api/admin/insights/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["data"]["total_checklists"], 1)
+        self.assertEqual(response.data["data"]["completed_items"], 1)
+        self.assertTrue(response.data["data"]["leaderboard"])
+
+    def test_admin_can_create_checklist_for_user(self):
+        response = self.client.post(
+            "/api/admin/checklists/",
+            {
+                "name": "Admin Created Checklist",
+                "type": "Monthly",
+                "created_by_id": self.member.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        checklist = Checklist.objects.get(name="Admin Created Checklist")
+        self.assertEqual(checklist.created_by, self.member)
+        self.assertEqual(response.data["data"]["created_by_email"], self.member.email)
+
+    def test_admin_checklists_endpoint_supports_search_filters(self):
+        Checklist.objects.create(
+            name="Daily Close",
+            type="Daily",
+            created_by=self.member,
+        )
+        Checklist.objects.create(
+            name="Quarterly Planning",
+            type="Quarterly",
+            created_by=self.other_member,
+        )
+
+        response = self.client.get("/api/admin/checklists/?search=Quarterly&type=Quarterly&creator=other")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["data"][0]["name"], "Quarterly Planning")
+
+    def test_admin_can_update_checklist_and_reassign_owner(self):
+        checklist = Checklist.objects.create(
+            name="Original Admin Checklist",
+            type="Daily",
+            created_by=self.member,
+        )
+
+        response = self.client.patch(
+            f"/api/admin/checklists/{checklist.id}/",
+            {
+                "name": "Reassigned Checklist",
+                "type": "Yearly",
+                "created_by_id": self.other_member.id,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        checklist.refresh_from_db()
+        self.assertEqual(checklist.name, "Reassigned Checklist")
+        self.assertEqual(checklist.type, "Yearly")
+        self.assertEqual(checklist.created_by, self.other_member)
+
+    def test_admin_can_delete_checklist(self):
+        checklist = Checklist.objects.create(
+            name="Delete Admin Checklist",
+            type="Quarterly",
+            created_by=self.member,
+        )
+
+        response = self.client.delete(f"/api/admin/checklists/{checklist.id}/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Checklist.objects.filter(pk=checklist.pk).exists())
+
+    def test_admin_can_manage_items_for_any_users_checklist(self):
+        checklist = Checklist.objects.create(
+            name="Managed Checklist",
+            type="Monthly",
+            created_by=self.member,
+        )
+
+        create_response = self.client.post(
+            f"/api/admin/checklists/{checklist.id}/items/",
+            {
+                "label": "Approve payroll",
+                "type": "Task",
+                "priority": "high",
+                "due_date": "2026-05-02",
+            },
+            format="json",
+        )
+
+        self.assertEqual(create_response.status_code, 201)
+        item_id = create_response.data["data"]["id"]
+
+        list_response = self.client.get(f"/api/admin/checklists/{checklist.id}/items/")
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(list_response.data["count"], 1)
+
+        update_response = self.client.patch(
+            f"/api/admin/checklists/{checklist.id}/items/{item_id}/",
+            {
+                "label": "Approve payroll packet",
+                "is_completed": True,
+            },
+            format="json",
+        )
+        self.assertEqual(update_response.status_code, 200)
+        self.assertTrue(update_response.data["data"]["is_completed"])
+
+        delete_response = self.client.delete(
+            f"/api/admin/checklists/{checklist.id}/items/{item_id}/"
+        )
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertFalse(ChecklistItem.objects.filter(pk=item_id).exists())
+
+    def test_admin_item_list_supports_filters(self):
+        checklist = Checklist.objects.create(
+            name="Filter Checklist",
+            type="Monthly",
+            created_by=self.member,
+        )
+        ChecklistItem.objects.create(
+            checklist=checklist,
+            label="Prepare report",
+            type="Task",
+            priority="high",
+            is_completed=False,
+            position=1,
+        )
+        ChecklistItem.objects.create(
+            checklist=checklist,
+            label="Completed note",
+            type="Note",
+            priority="low",
+            is_completed=True,
+            position=2,
+        )
+
+        response = self.client.get(
+            f"/api/admin/checklists/{checklist.id}/items/?search=Prepare&priority=high&status=pending"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["data"][0]["label"], "Prepare report")
 
 
 # ============================================================

@@ -8,6 +8,7 @@ on:
       - "Front-end/**"
       - "Myproject/**"
       - ".github/workflows/dast.yml"
+      - ".github/workflows/sast.yml"
   pull_request:
     branches:
       - main
@@ -15,6 +16,7 @@ on:
       - "Front-end/**"
       - "Myproject/**"
       - ".github/workflows/dast.yml"
+      - ".github/workflows/sast.yml"
   workflow_dispatch:
 
 permissions:
@@ -104,36 +106,50 @@ jobs:
           cat "$RUNNER_TEMP/vite-preview.log" || true
           exit 1
 
-      - name: Prepare ZAP report directory
-        run: mkdir -p .zap-reports
+      - name: Smoke check key routes
+        shell: bash
+        run: |
+          curl --fail --silent http://127.0.0.1:4173/login > /dev/null
+          backend_status="$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/api/auth/user/ || true)"
+          if [[ "$backend_status" != "401" && "$backend_status" != "403" ]]; then
+            echo "Expected auth endpoint to require authentication, got $backend_status"
+            exit 1
+          fi
+
+      - name: Prepare ZAP directories
+        run: |
+          mkdir -p .zap-reports
+          mkdir -p .zap-work
 
       - name: Run ZAP baseline scan against frontend
         shell: bash
         run: |
           docker run --rm --network host --user root \
-            -v "${GITHUB_WORKSPACE}:/zap/wrk/:rw" \
+            -v "${GITHUB_WORKSPACE}/.zap-work:/zap/wrk/:rw" \
+            -v "${GITHUB_WORKSPACE}/.zap-reports:/zap/reports/:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
-            -t http://127.0.0.1:4173 \
+            -t http://127.0.0.1:4173/login \
             -m 5 \
             -I \
-            -J /zap/wrk/.zap-reports/frontend-zap.json \
-            -r /zap/wrk/.zap-reports/frontend-zap.html \
-            -w /zap/wrk/.zap-reports/frontend-zap.md
+            -J /zap/reports/frontend-zap.json \
+            -r /zap/reports/frontend-zap.html \
+            -w /zap/reports/frontend-zap.md
 
       - name: Run ZAP baseline scan against backend API
         shell: bash
         run: |
           docker run --rm --network host --user root \
-            -v "${GITHUB_WORKSPACE}:/zap/wrk/:rw" \
+            -v "${GITHUB_WORKSPACE}/.zap-work:/zap/wrk/:rw" \
+            -v "${GITHUB_WORKSPACE}/.zap-reports:/zap/reports/:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t http://127.0.0.1:8000/api/ \
             -m 3 \
             -I \
-            -J /zap/wrk/.zap-reports/backend-zap.json \
-            -r /zap/wrk/.zap-reports/backend-zap.html \
-            -w /zap/wrk/.zap-reports/backend-zap.md
+            -J /zap/reports/backend-zap.json \
+            -r /zap/reports/backend-zap.html \
+            -w /zap/reports/backend-zap.md
 
       - name: Upload ZAP reports
         if: always()
@@ -141,6 +157,16 @@ jobs:
         with:
           name: dast-reports
           path: .zap-reports/
+          retention-days: 7
+
+      - name: Upload DAST service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dast-service-logs
+          path: |
+            ${{ runner.temp }}/django.log
+            ${{ runner.temp }}/vite-preview.log
           retention-days: 7
 
       - name: Stop application stack

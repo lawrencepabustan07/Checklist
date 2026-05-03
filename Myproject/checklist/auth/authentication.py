@@ -20,6 +20,8 @@ class Auth0Authentication(BaseAuthentication):
         try:
             payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
             user = User.objects.get(id=payload['user_id'])
+            if not user.is_active:
+                raise AuthenticationFailed('Account inactive')
             UserProfile.objects.get_or_create(user=user)
             return (user, token)
         except jwt.ExpiredSignatureError:
@@ -55,6 +57,8 @@ class Auth0Authentication(BaseAuthentication):
                 email=email,
                 defaults={'username': email.split('@')[0]}
             )
+            if not user.is_active:
+                raise AuthenticationFailed('Account inactive')
             UserProfile.objects.get_or_create(user=user)
             return (user, token)
 
