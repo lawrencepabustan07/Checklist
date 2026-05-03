@@ -28,9 +28,9 @@ concurrency:
 
 jobs:
   zap-baseline:
-    name: OWASP ZAP Baseline Scan
+    name: OWASP ZAP DAST
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     env:
       DJANGO_SECRET_KEY: dast-ci-secret-key
@@ -150,6 +150,38 @@ jobs:
             -J /zap/reports/backend-zap.json \
             -r /zap/reports/backend-zap.html \
             -w /zap/reports/backend-zap.md
+
+      - name: Run ZAP active scan against frontend
+        shell: bash
+        run: |
+          docker run --rm --network host --user root \
+            -v "${GITHUB_WORKSPACE}/.zap-work:/zap/wrk/:rw" \
+            -v "${GITHUB_WORKSPACE}/.zap-reports:/zap/reports/:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-full-scan.py \
+            -t http://127.0.0.1:4173/login \
+            -m 5 \
+            -T 10 \
+            -I \
+            -J /zap/reports/frontend-active-zap.json \
+            -r /zap/reports/frontend-active-zap.html \
+            -w /zap/reports/frontend-active-zap.md
+
+      - name: Run ZAP active scan against backend API
+        shell: bash
+        run: |
+          docker run --rm --network host --user root \
+            -v "${GITHUB_WORKSPACE}/.zap-work:/zap/wrk/:rw" \
+            -v "${GITHUB_WORKSPACE}/.zap-reports:/zap/reports/:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-full-scan.py \
+            -t http://127.0.0.1:8000/api/ \
+            -m 3 \
+            -T 10 \
+            -I \
+            -J /zap/reports/backend-active-zap.json \
+            -r /zap/reports/backend-active-zap.html \
+            -w /zap/reports/backend-active-zap.md
 
       - name: Upload ZAP reports
         if: always()
