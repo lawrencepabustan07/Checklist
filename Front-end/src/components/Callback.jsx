@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { register } from "../services/api";
+import { clearStoredCodeVerifier, getStoredCodeVerifier } from "./authPkce";
 
 export default function Callback() {
   const navigate = useNavigate();
@@ -15,6 +16,7 @@ export default function Callback() {
     async function handleCallback() {
       const urlParams = new URLSearchParams(window.location.search);
       const code = urlParams.get("code");
+      const verifier = getStoredCodeVerifier();
 
       if (!code) {
         setError("No authorization code received");
@@ -22,18 +24,25 @@ export default function Callback() {
         return;
       }
 
+      if (!verifier) {
+        setError("Missing PKCE verifier. Please try signing in again.");
+        setTimeout(() => navigate("/login"), 3000);
+        return;
+      }
+
       try {
+        const domain = import.meta.env.VITE_AUTH0_DOMAIN;
         const tokenResponse = await fetch(
-          `https://dev-zg54pxgt5z5cithx.us.auth0.com/oauth/token`,
+          `https://${domain}/oauth/token`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               grant_type: "authorization_code",
               client_id: import.meta.env.VITE_AUTH0_CLIENT_ID,
-              client_secret: import.meta.env.VITE_AUTH0_CLIENT_SECRET,
               code,
-              redirect_uri: "http://localhost:5173/callback",
+              code_verifier: verifier,
+              redirect_uri: `${window.location.origin}/callback`,
             }),
           },
         );
@@ -45,6 +54,7 @@ export default function Callback() {
         }
 
         const cleanToken = String(tokenData.access_token).trim();
+        clearStoredCodeVerifier();
         const registerResponse = await register(cleanToken);
         const registerData = registerResponse.data;
 
@@ -79,6 +89,7 @@ export default function Callback() {
         navigate(nextPath);
       } catch (err) {
         console.error("Callback error:", err);
+        clearStoredCodeVerifier();
         setError(err.message);
         setTimeout(() => navigate("/login"), 3000);
       }

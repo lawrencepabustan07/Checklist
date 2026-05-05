@@ -37,6 +37,20 @@ def load_or_create_secret_key():
     return generated_secret
 
 
+def env_flag(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def load_allowed_hosts():
+    raw_hosts = os.getenv("DJANGO_ALLOWED_HOSTS", "")
+    if raw_hosts.strip():
+        return [host.strip() for host in raw_hosts.split(",") if host.strip()]
+    return ["127.0.0.1", "localhost"]
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
@@ -44,9 +58,9 @@ def load_or_create_secret_key():
 SECRET_KEY = load_or_create_secret_key()
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env_flag("DJANGO_DEBUG", default=False)
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = load_allowed_hosts()
 
 
 # Application definition

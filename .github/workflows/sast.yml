@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   bandit-backend:
@@ -150,10 +151,22 @@ jobs:
           exit $semgrep_status
 
       - name: Upload Semgrep SARIF
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        if: |
+          always() &&
+          (
+            github.event_name != 'pull_request' ||
+            github.event.pull_request.head.repo.full_name == github.repository
+          )
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: security-reports/semgrep.sarif
+
+      - name: Skip SARIF upload for fork pull requests
+        if: |
+          always() &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name != github.repository
+        run: echo "Skipping SARIF upload because GitHub does not allow code scanning uploads from forked pull requests."
 
       - name: Upload Semgrep report artifact
         if: always()

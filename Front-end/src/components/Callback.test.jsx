@@ -18,6 +18,11 @@ vi.mock("../services/api", () => ({
   register: (...args) => registerMock(...args),
 }));
 
+vi.mock("./authPkce", () => ({
+  getStoredCodeVerifier: vi.fn(() => "pkce-verifier"),
+  clearStoredCodeVerifier: vi.fn(),
+}));
+
 import Callback from "./Callback";
 
 describe("Callback", () => {
@@ -25,8 +30,9 @@ describe("Callback", () => {
     navigateMock.mockReset();
     registerMock.mockReset();
     localStorage.clear();
+    sessionStorage.clear();
     vi.stubEnv("VITE_AUTH0_CLIENT_ID", "client-123");
-    vi.stubEnv("VITE_AUTH0_CLIENT_SECRET", "secret-456");
+    vi.stubEnv("VITE_AUTH0_DOMAIN", "auth.example.com");
   });
 
   it("shows an error and redirects to login when no authorization code is present", async () => {
@@ -39,6 +45,24 @@ describe("Callback", () => {
     );
 
     expect(await screen.findByText("No authorization code received")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith("/login");
+    }, { timeout: 4000 });
+  });
+
+  it("shows an error and redirects to login when the PKCE verifier is missing", async () => {
+    const { getStoredCodeVerifier } = await import("./authPkce");
+    vi.mocked(getStoredCodeVerifier).mockReturnValueOnce("");
+    window.history.pushState({}, "", "/callback?code=abc123");
+
+    render(
+      <MemoryRouter>
+        <Callback />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Missing PKCE verifier. Please try signing in again.")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith("/login");

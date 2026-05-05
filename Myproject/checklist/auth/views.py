@@ -1,5 +1,6 @@
 import jwt as pyjwt
 import os
+import logging
 from datetime import datetime, timedelta
 from django.utils import timezone
 from django.core.files.uploadedfile import UploadedFile
@@ -13,6 +14,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from checklist.models import LoginActivity, UserProfile
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_AVATAR_URL = f"{settings.MEDIA_URL}profiles/default-avatar.svg"
 AUTH0_REQUEST_TIMEOUT = 10
@@ -216,7 +218,10 @@ class RegisterView(APIView):
             )
             
             if response.status_code != 200:
-                print(f"UserInfo error: {response.status_code} - {response.text}")
+                logger.warning(
+                    "Auth0 userinfo request failed with status %s",
+                    response.status_code,
+                )
                 return Response({
                     'status': 'error',
                     'message': 'Failed to verify token'
@@ -259,13 +264,11 @@ class RegisterView(APIView):
                 'email': user.email
             }, status=201 if created else 200)
 
-        except Exception as e:
-            print(f"Register error: {str(e)}")
-            import traceback
-            traceback.print_exc()
+        except Exception:
+            logger.exception("Register error")
             return Response({
                 'status': 'error',
-                'message': str(e)
+                'message': 'Registration failed'
             }, status=401)
 
 

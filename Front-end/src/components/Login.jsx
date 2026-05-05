@@ -1,12 +1,15 @@
+import { preparePkce } from "./authPkce";
+
 export default function Login() {
 
-  function handleGoogleLogin() {
+  async function handleGoogleLogin() {
     const domain = import.meta.env.VITE_AUTH0_DOMAIN;
     const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID;
-    const redirectUri = encodeURIComponent("http://localhost:5173/callback");
+    const redirectUri = encodeURIComponent(`${window.location.origin}/callback`);
+    const { challenge } = await preparePkce();
 
     // Redirect to Auth0's login page
-    window.location.href = `https://${domain}/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=openid%20profile%20email&connection=google-oauth2`;
+    window.location.href = `https://${domain}/authorize?response_type=code&client_id=${clientId}&redirect_uri=${redirectUri}&scope=openid%20profile%20email&connection=google-oauth2&code_challenge=${challenge}&code_challenge_method=S256`;
   }
 
   return (

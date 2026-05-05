@@ -27,7 +27,10 @@ class Auth0Authentication(BaseAuthentication):
         except jwt.ExpiredSignatureError:
             raise AuthenticationFailed('Token expired')
         except (jwt.InvalidTokenError, User.DoesNotExist, KeyError):
-            pass
+            payload = None
+
+        if payload:
+            return None
 
         
         try:
