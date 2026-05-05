@@ -1,9 +1,8 @@
 import axios from "axios";
-
-const API_BASE = "http://127.0.0.1:8000/api/auth";
+import { AUTH_API_BASE_URL } from "./runtimeConfig";
 
 const api = axios.create({
-  baseURL: API_BASE,
+  baseURL: AUTH_API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },

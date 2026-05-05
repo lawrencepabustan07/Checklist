@@ -362,7 +362,7 @@ describe("AdminPage", () => {
     await user.click(screen.getByRole("button", { name: "Remove Image" }));
     expect(screen.getByAltText("Checklist preview")).toHaveAttribute(
       "src",
-      "http://127.0.0.1:8000/media/checklists/default-checklist.svg",
+      "http://localhost:8000/media/checklists/default-checklist.svg",
     );
 
     await user.click(screen.getByRole("button", { name: "Save Checklist" }));

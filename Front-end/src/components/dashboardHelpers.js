@@ -1,7 +1,11 @@
-const DEFAULT_CHECKLIST_IMAGE =
-  "http://127.0.0.1:8000/media/checklists/default-checklist.svg";
-const DEFAULT_AVATAR_IMAGE =
-  "http://127.0.0.1:8000/media/profiles/default-avatar.svg";
+import {
+  DEFAULT_AVATAR_IMAGE_URL,
+  DEFAULT_CHECKLIST_IMAGE_URL,
+} from "../services/runtimeConfig";
+import { getAccessToken } from "../services/authStorage";
+
+const DEFAULT_CHECKLIST_IMAGE = DEFAULT_CHECKLIST_IMAGE_URL;
+const DEFAULT_AVATAR_IMAGE = DEFAULT_AVATAR_IMAGE_URL;
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
@@ -254,4 +258,3 @@ export {
   THEME_TOKENS,
   validateImageFile,
 };
-import { getAccessToken } from "../services/authStorage";

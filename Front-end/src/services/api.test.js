@@ -19,7 +19,7 @@ import { register } from "./api";
 describe("auth api", () => {
   it("creates the axios client with the expected auth base URL", () => {
     expect(createMock).toHaveBeenCalledWith({
-      baseURL: "http://127.0.0.1:8000/api/auth",
+      baseURL: "http://localhost:8000/api/auth",
       headers: {
         "Content-Type": "application/json",
       },

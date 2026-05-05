@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { register } from "../services/api";
 import { clearStoredCodeVerifier, getStoredCodeVerifier } from "./authPkce";
 import { setAccessToken } from "../services/authStorage";
+import { API_BASE_URL } from "../services/runtimeConfig";
 
 export default function Callback() {
   const navigate = useNavigate();
@@ -65,7 +66,7 @@ export default function Callback() {
 
         try {
           const profileResponse = await fetch(
-            "http://127.0.0.1:8000/api/auth/user/",
+            `${API_BASE_URL}/auth/user/`,
             {
               headers: {
                 Authorization: `Bearer ${registerData.access_token}`,

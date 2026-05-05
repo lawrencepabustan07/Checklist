@@ -11,9 +11,13 @@ import {
 } from "./AdminPageSections";
 import { clearAccessToken } from "../services/authStorage";
 import { attachAuthHeader } from "./dashboardHelpers";
+import {
+  API_BASE_URL,
+  DEFAULT_CHECKLIST_IMAGE_URL,
+} from "../services/runtimeConfig";
 
 const API = axios.create({
-  baseURL: "http://127.0.0.1:8000/api",
+  baseURL: API_BASE_URL,
 });
 
 API.interceptors.request.use(attachAuthHeader);
@@ -25,8 +29,7 @@ const PRIORITY_OPTIONS = [
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
 ];
-const DEFAULT_CHECKLIST_IMAGE =
-  "http://127.0.0.1:8000/media/checklists/default-checklist.svg";
+const DEFAULT_CHECKLIST_IMAGE = DEFAULT_CHECKLIST_IMAGE_URL;
 const SPACING = {
   xs: "8px",
   sm: "12px",
