@@ -76,7 +76,7 @@ jobs:
         working-directory: Myproject
         run: |
           python manage.py migrate --noinput
-          nohup gunicorn Myproject.wsgi:application --bind 127.0.0.1:8000 --workers 2 --no-server-header > "$RUNNER_TEMP/django.log" 2>&1 &
+          nohup gunicorn Myproject.wsgi:application --bind 127.0.0.1:8000 --workers 2 > "$RUNNER_TEMP/django.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/django.pid"
 
       - name: Start Vite preview
@@ -120,6 +120,7 @@ jobs:
         run: |
           mkdir -p .zap-reports
           mkdir -p .zap-work
+          cp .zap/backend-rules.conf .zap-work/backend-rules.conf
 
       - name: Run ZAP baseline scan against frontend
         shell: bash
@@ -145,6 +146,7 @@ jobs:
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t http://127.0.0.1:8000/api/ \
+            -c /zap/wrk/backend-rules.conf \
             -m 3 \
             -I \
             -J /zap/reports/backend-zap.json \
@@ -176,6 +178,7 @@ jobs:
             ghcr.io/zaproxy/zaproxy:stable \
             zap-full-scan.py \
             -t http://127.0.0.1:8000/api/ \
+            -c /zap/wrk/backend-rules.conf \
             -m 3 \
             -T 10 \
             -I \
