@@ -62,7 +62,7 @@ jobs:
         working-directory: Myproject
         run: |
           python -m pip install --upgrade pip
-          pip install django djangorestframework djangorestframework-simplejwt django-cors-headers pyjwt requests coverage
+          pip install django djangorestframework djangorestframework-simplejwt django-cors-headers pyjwt requests coverage gunicorn
 
       - name: Install frontend dependencies
         working-directory: Front-end
@@ -76,7 +76,7 @@ jobs:
         working-directory: Myproject
         run: |
           python manage.py migrate --noinput
-          nohup python manage.py runserver 127.0.0.1:8000 > "$RUNNER_TEMP/django.log" 2>&1 &
+          nohup gunicorn Myproject.wsgi:application --bind 127.0.0.1:8000 --workers 2 --no-server-header > "$RUNNER_TEMP/django.log" 2>&1 &
           echo $! > "$RUNNER_TEMP/django.pid"
 
       - name: Start Vite preview

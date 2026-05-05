@@ -1521,3 +1521,20 @@ class ErrorHandlerTests(TestCase):
             response.data["message"],
             "The requested resource was not found.",
         )
+
+
+class SecurityHeadersTests(TestCase):
+    def test_not_found_response_includes_security_headers(self):
+        response = self.client.get("/robots.txt")
+
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(response["X-Frame-Options"], "DENY")
+        self.assertIn("frame-ancestors 'none'", response["Content-Security-Policy"])
+        self.assertEqual(
+            response["Permissions-Policy"],
+            "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+        )
+        self.assertEqual(
+            response["Cross-Origin-Resource-Policy"],
+            "same-origin",
+        )

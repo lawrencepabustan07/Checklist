@@ -101,6 +101,7 @@ REST_FRAMEWORK = {
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'checklist.middleware.SecurityHeadersMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -110,6 +111,16 @@ MIDDLEWARE = [
 ]
 CORS_ALLOW_ALL_ORIGINS = env_flag("DJANGO_CORS_ALLOW_ALL", default=False)
 CORS_ALLOWED_ORIGINS = [] if CORS_ALLOW_ALL_ORIGINS else load_cors_allowed_origins()
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+CONTENT_SECURITY_POLICY = (
+    "default-src 'none'; "
+    "base-uri 'none'; "
+    "frame-ancestors 'none'; "
+    "object-src 'none'; "
+    "form-action 'none'"
+)
+PERMISSIONS_POLICY = "camera=(), geolocation=(), microphone=(), payment=(), usb=()"
 
 
 ROOT_URLCONF = 'Myproject.urls'
