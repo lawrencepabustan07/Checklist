@@ -1289,7 +1289,7 @@ class AdminApiTests(APITestCase):
         self.assertEqual(response.data["count"], 1)
         self.assertEqual(response.data["data"][0]["provider"], "auth0")
 
-    def test_admin_insights_endpoint_returns_leaderboard_data(self):
+    def test_admin_insights_endpoint_returns_item_summary_data(self):
         checklist = Checklist.objects.create(
             name="Insights Checklist",
             type="Daily",
@@ -1307,8 +1307,11 @@ class AdminApiTests(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["data"]["total_checklists"], 1)
+        self.assertEqual(response.data["data"]["total_checklist_items"], 1)
+        self.assertEqual(response.data["data"]["total_completed_items"], 1)
+        self.assertEqual(response.data["data"]["total_pending_items"], 0)
         self.assertEqual(response.data["data"]["completed_items"], 1)
-        self.assertTrue(response.data["data"]["leaderboard"])
+        self.assertEqual(response.data["data"]["avg_completion_rate"], 33.33)
 
     def test_admin_can_create_checklist_for_user(self):
         response = self.client.post(

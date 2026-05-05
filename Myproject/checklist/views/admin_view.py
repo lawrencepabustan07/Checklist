@@ -252,27 +252,10 @@ class AdminInsightsView(APIView):
         completed_items = item_queryset.filter(is_completed=True).count()
         pending_items = max(total_items - completed_items, 0)
         item_completion_rate = round((completed_items / total_items) * 100, 2) if total_items else 0
-
-        leaderboard = sorted(
-            user_payload,
-            key=lambda payload: (
-                payload["completed_items"],
-                payload["completion_rate"],
-                payload["total_checklists"],
-            ),
-            reverse=True,
-        )
-
-        most_active_user = max(
-            user_payload,
-            key=lambda payload: (payload["total_items"], payload["completed_items"], payload["total_checklists"]),
-            default=None,
-        )
-        least_active_user = min(
-            user_payload,
-            key=lambda payload: (payload["total_items"], payload["completed_items"], payload["total_checklists"]),
-            default=None,
-        )
+        avg_completion_rate = round(
+            sum(payload["completion_rate"] for payload in user_payload) / len(user_payload),
+            2,
+        ) if user_payload else 0
 
         return Response(
             {
@@ -283,13 +266,14 @@ class AdminInsightsView(APIView):
                     "inactive_users": sum(1 for payload in user_payload if not payload["is_active"]),
                     "total_checklists": total_checklists,
                     "archived_checklists": archived_checklists_count,
+                    "total_checklist_items": total_items,
+                    "total_completed_items": completed_items,
+                    "total_pending_items": pending_items,
+                    "avg_completion_rate": avg_completion_rate,
                     "total_items": total_items,
                     "completed_items": completed_items,
                     "pending_items": pending_items,
                     "item_completion_rate": item_completion_rate,
-                    "leaderboard": leaderboard[:5],
-                    "most_active_user": most_active_user,
-                    "least_active_user": least_active_user,
                 },
             },
             status=status.HTTP_200_OK,

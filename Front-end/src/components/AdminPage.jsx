@@ -1,7 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
+import {
+  AdminChecklistsList,
+  AdminFilters,
+  AdminItemsList,
+  AdminUsersList,
+  UserDetailCard,
+} from "./AdminPageSections";
 import { attachAuthHeader } from "./dashboardHelpers";
 
 const API = axios.create({
@@ -111,10 +118,10 @@ function checklistPreviewSrc(targetChecklist, preview, removeImage) {
   return targetChecklist?.image_url || DEFAULT_CHECKLIST_IMAGE;
 }
 
-function ModalShell({ title, children, onClose }) {
+function ModalShell({ title, children, onClose, panelStyle }) {
   return (
     <div style={styles.modalBackdrop}>
-      <div style={styles.modalPanel} className="admin-surface">
+      <div style={{ ...styles.modalPanel, ...panelStyle }} className="admin-surface">
         <div style={styles.modalHeader}>
           <div>
             <h2 style={styles.modalTitle}>{title}</h2>
@@ -137,11 +144,11 @@ function ModalShell({ title, children, onClose }) {
 export default function AdminPage() {
   const navigate = useNavigate();
   const [adminEmail, setAdminEmail] = useState("");
-  const [insights, setInsights] = useState(null);
   const [users, setUsers] = useState([]);
   const [checklists, setChecklists] = useState([]);
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [selectedChecklistId, setSelectedChecklistId] = useState(null);
+  const [userModalOpen, setUserModalOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingItems, setLoadingItems] = useState(false);
@@ -254,9 +261,10 @@ export default function AdminPage() {
     const nextUsers = normaliseCollection(res);
     setUsers(nextUsers);
     if (!nextUsers.some((user) => String(user.id) === String(selectedUserId))) {
-      setSelectedUserId(nextUsers[0]?.id || null);
-    } else if (!selectedUserId && nextUsers.length > 0) {
-      setSelectedUserId(nextUsers[0].id);
+      setSelectedUserId(null);
+      setUserModalOpen(false);
+      setSelectedChecklistId(null);
+      setItems([]);
     }
   }, [selectedUserId, userFilters]);
 
@@ -286,11 +294,6 @@ export default function AdminPage() {
     [itemFilters],
   );
 
-  const loadInsights = useCallback(async () => {
-    const res = await API.get("/admin/insights/");
-    setInsights(res.data.data || null);
-  }, []);
-
   useEffect(() => {
     let mounted = true;
 
@@ -300,7 +303,7 @@ export default function AdminPage() {
         if (!isAdmin || !mounted) {
           return;
         }
-        await Promise.all([loadUsers(), loadChecklists(), loadInsights()]);
+        await Promise.all([loadUsers(), loadChecklists()]);
       } catch (err) {
         if (mounted) {
           setError(
@@ -319,7 +322,7 @@ export default function AdminPage() {
     return () => {
       mounted = false;
     };
-  }, [loadChecklists, loadCurrentUser, loadInsights, loadUsers]);
+  }, [loadChecklists, loadCurrentUser, loadUsers]);
 
   useEffect(() => {
     if (!selectedChecklistId) {
@@ -334,7 +337,7 @@ export default function AdminPage() {
   }, [selectedChecklistId, loadItems]);
 
   useEffect(() => {
-    if (!selectedUserId) {
+    if (!selectedUserId || !userModalOpen) {
       setSelectedChecklistId(null);
       return;
     }
@@ -346,7 +349,7 @@ export default function AdminPage() {
     ) {
       setSelectedChecklistId(firstChecklist?.id || null);
     }
-  }, [selectedChecklistId, selectedUserId, visibleChecklists]);
+  }, [selectedChecklistId, selectedUserId, userModalOpen, visibleChecklists]);
 
   function clearStatus() {
     setError("");
@@ -460,9 +463,22 @@ export default function AdminPage() {
   function handleUserSelect(user) {
     setSelectedUserId(user.id);
     setSelectedChecklistId(null);
+    setUserModalOpen(true);
     clearStatus();
     closeChecklistModal();
     closeItemModal();
+  }
+
+  function closeUserManagementModal() {
+    setUserModalOpen(false);
+    setSelectedUserId(null);
+    setSelectedChecklistId(null);
+    setItems([]);
+    closeChecklistModal();
+    closeItemModal();
+    closeDeleteModal();
+    closeActivityModal();
+    clearStatus();
   }
 
   function handleChecklistCardClick(checklistId) {
@@ -683,7 +699,7 @@ export default function AdminPage() {
     try {
       await API.patch(`/admin/users/${userId}/`, payload);
       setSuccess(successMessage);
-      await Promise.all([loadUsers(), loadInsights()]);
+      await loadUsers();
     } catch (err) {
       setError(err.response?.data?.message || "Failed to update user.");
     } finally {
@@ -720,6 +736,34 @@ export default function AdminPage() {
     }
   }
 
+  function handlePromoteDemoteUser(user) {
+    updateUser(
+      user.id,
+      { is_admin: !user.is_admin },
+      user.is_admin
+        ? "User demoted successfully."
+        : "User promoted successfully.",
+    );
+  }
+
+  function handleArchiveReactivateUser(user) {
+    updateUser(
+      user.id,
+      { is_active: !user.is_active },
+      user.is_active
+        ? "User archived successfully."
+        : "User reactivated successfully.",
+    );
+  }
+
+  function handleDeleteChecklistRequest(checklist) {
+    openDeleteModal("checklist", checklist);
+  }
+
+  function handleDeleteItemRequest(item) {
+    openDeleteModal("item", item);
+  }
+
   function handleLogout() {
     localStorage.removeItem("access_token");
     localStorage.removeItem("email");
@@ -750,25 +794,7 @@ export default function AdminPage() {
               Signed in as <strong>{adminEmail || "admin"}</strong>
             </p>
           </div>
-          <div style={styles.headerStatsWrap}>
-            <div style={styles.headerStat}>
-              <span style={styles.headerStatLabel}>Tracked Checklists</span>
-              <strong style={styles.headerStatValue}>
-                {insights?.total_checklists || 0}
-              </strong>
-            </div>
-            <div style={styles.headerMiniStat}>
-              <span style={styles.headerMiniLabel}>Users</span>
-              <strong style={styles.headerMiniValue}>
-                {insights?.total_users || users.length}
-              </strong>
-            </div>
-            <div style={styles.headerMiniStat}>
-              <span style={styles.headerMiniLabel}>Completed Items</span>
-              <strong style={styles.headerMiniValue}>
-                {insights?.completed_items || 0}
-              </strong>
-            </div>
+          <div style={styles.headerActionWrap}>
             <button
               type="button"
               onClick={handleLogout}
@@ -787,854 +813,132 @@ export default function AdminPage() {
           <div style={styles.loadingCard}>Loading admin data...</div>
         ) : (
           <>
-            {insights ? (
+            <section style={styles.section} className="admin-surface">
+              <div style={styles.sectionAccent} />
+              <div style={styles.sectionHeader}>
+                <div>
+                  <h2 style={styles.sectionTitle}>Users</h2>
+                  <span style={styles.sectionMeta}>
+                    Click any user to open the management modal
+                  </span>
+                </div>
+                <span style={styles.sectionMeta}>{users.length} users</span>
+              </div>
+              <AdminFilters
+                filters={userFilters}
+                onFilterChange={handleUserFilterChange}
+                type="users"
+                styles={styles}
+              />
+              <AdminUsersList
+                users={users}
+                selectedUserId={userModalOpen ? selectedUserId : null}
+                onSelectUser={handleUserSelect}
+                styles={styles}
+              />
+              {!users.length ? (
+                <div style={styles.inlineEmptyState}>
+                  <h3 style={styles.emptyStateTitle}>No users found</h3>
+                  <p style={styles.emptyStateCopy}>
+                    Try adjusting the filters to find a user to manage.
+                  </p>
+                </div>
+              ) : null}
+            </section>
+          </>
+        )}
+
+        {userModalOpen && selectedUser ? (
+          <ModalShell
+            title={`Manage ${selectedUser.email}`}
+            onClose={closeUserManagementModal}
+            panelStyle={styles.managementModalPanel}
+          >
+            <div style={styles.managementModalBody}>
+              <UserDetailCard
+                user={selectedUser}
+                onPromoteDemote={handlePromoteDemoteUser}
+                onArchiveReactivate={handleArchiveReactivateUser}
+                onViewActivity={openActivityHistory}
+                updatingUserId={updatingUserId}
+                styles={styles}
+              />
+
               <section style={styles.section} className="admin-surface">
                 <div style={styles.sectionAccent} />
                 <div style={styles.sectionHeader}>
                   <div>
-                    <h2 style={styles.sectionTitle}>System Insights</h2>
+                    <h2 style={styles.sectionTitle}>Checklists</h2>
                     <span style={styles.sectionMeta}>
-                      Live admin-wide performance snapshot
+                      Full checklist and item management for {selectedUser.email}
                     </span>
                   </div>
                 </div>
-                <div style={styles.userStatsGrid}>
-                  <article style={styles.userStatsCard}>
-                    <span style={styles.metricLabel}>Total Checklists</span>
-                    <strong style={styles.metricValue}>
-                      {insights.total_checklists}
-                    </strong>
-                  </article>
-                  <article style={styles.userStatsCard}>
-                    <span style={styles.metricLabel}>Completed Items</span>
-                    <strong style={styles.metricValue}>
-                      {insights.completed_items}
-                    </strong>
-                  </article>
-                  <article style={styles.userStatsCard}>
-                    <span style={styles.metricLabel}>Completion Rate</span>
-                    <strong style={styles.metricValue}>
-                      {insights.item_completion_rate}%
-                    </strong>
-                  </article>
-                  <article style={styles.userStatsCard}>
-                    <span style={styles.metricLabel}>Active Users</span>
-                    <strong style={styles.metricValue}>
-                      {insights.active_users}
-                    </strong>
-                  </article>
-                </div>
-                <div style={styles.userStatsGrid}>
-                  <article style={styles.userStatsCard}>
-                    <div style={styles.sectionHeader}>
-                      <h3 style={styles.cardTitle}>Leaderboard</h3>
-                      <span style={styles.sectionMeta}>Top performers</span>
-                    </div>
-                    {insights.leaderboard?.length ? (
-                      <div style={styles.stackList}>
-                        {insights.leaderboard.map((entry, index) => (
-                          <div key={entry.id} style={styles.listRow}>
-                            <span style={styles.rankPill}>#{index + 1}</span>
-                            <div>
-                              <strong style={styles.listTitle}>
-                                {entry.email}
-                              </strong>
-                              <p style={styles.listMeta}>
-                                {entry.completed_items} completed items ·{" "}
-                                {entry.completion_rate}% item completion
-                              </p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p style={styles.emptyText}>No leaderboard data yet.</p>
-                    )}
-                  </article>
-                  <article style={styles.userStatsCard}>
-                    <div style={styles.sectionHeader}>
-                      <h3 style={styles.cardTitle}>Activity Watch</h3>
-                      <span style={styles.sectionMeta}>
-                        Most and least active
-                      </span>
-                    </div>
-                    <div style={styles.stackList}>
-                      <div style={styles.listRow}>
-                        <span style={styles.rankPill}>Top</span>
-                        <div>
-                          <strong style={styles.listTitle}>
-                            {insights.most_active_user?.email || "No data"}
-                          </strong>
-                          <p style={styles.listMeta}>
-                            {insights.most_active_user
-                              ? `${insights.most_active_user.total_items} tracked items · ${insights.most_active_user.completed_items} completed`
-                              : "Waiting for activity"}
-                          </p>
-                        </div>
-                      </div>
-                      <div style={styles.listRow}>
-                        <span style={styles.rankPill}>Low</span>
-                        <div>
-                          <strong style={styles.listTitle}>
-                            {insights.least_active_user?.email || "No data"}
-                          </strong>
-                          <p style={styles.listMeta}>
-                            {insights.least_active_user
-                              ? `${insights.least_active_user.total_items} tracked items · ${insights.least_active_user.completed_items} completed`
-                              : "Waiting for activity"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                </div>
+                <AdminFilters
+                  filters={checklistFilters}
+                  onFilterChange={handleChecklistFilterChange}
+                  type="checklists"
+                  styles={styles}
+                  checklistTypes={CHECKLIST_TYPES}
+                />
+                <AdminChecklistsList
+                  checklists={visibleChecklists}
+                  selectedChecklistId={selectedChecklistId}
+                  userId={selectedUser.id}
+                  userEmail={selectedUser.email}
+                  onSelectChecklist={handleChecklistCardClick}
+                  onEditChecklist={openEditChecklistModal}
+                  onDeleteChecklist={handleDeleteChecklistRequest}
+                  onCreateChecklist={openCreateChecklistModal}
+                  styles={styles}
+                  defaultChecklistImage={DEFAULT_CHECKLIST_IMAGE}
+                />
               </section>
-            ) : null}
 
-            <section style={styles.section} className="admin-surface">
-              <div style={styles.sectionAccent} />
-              <div style={styles.sectionHeader}>
-                <h2 style={styles.sectionTitle}>Users</h2>
-                <span style={styles.sectionMeta}>{users.length} users</span>
-              </div>
-              <div style={styles.filterGrid}>
-                <div style={styles.modalField}>
-                  <label htmlFor="admin-user-search" style={styles.modalLabel}>
-                    Search Users
-                  </label>
-                  <input
-                    id="admin-user-search"
-                    name="search"
-                    value={userFilters.search}
-                    onChange={handleUserFilterChange}
-                    placeholder="Search by email or username"
-                    style={styles.input}
-                    className="admin-input"
-                  />
-                </div>
-                <div style={styles.modalField}>
-                  <label htmlFor="admin-user-role" style={styles.modalLabel}>
-                    Role
-                  </label>
-                  <select
-                    id="admin-user-role"
-                    name="role"
-                    value={userFilters.role}
-                    onChange={handleUserFilterChange}
-                    style={styles.select}
-                    className="admin-input"
-                  >
-                    <option value="">All roles</option>
-                    <option value="admin">Admin</option>
-                    <option value="member">Member</option>
-                  </select>
-                </div>
-                <div style={styles.modalField}>
-                  <label htmlFor="admin-user-status" style={styles.modalLabel}>
-                    Status
-                  </label>
-                  <select
-                    id="admin-user-status"
-                    name="status"
-                    value={userFilters.status}
-                    onChange={handleUserFilterChange}
-                    style={styles.select}
-                    className="admin-input"
-                  >
-                    <option value="">All users</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Archived</option>
-                  </select>
-                </div>
-              </div>
-              <div style={styles.userStatsGrid}>
-                {users.map((user) => (
-                  <article
-                    key={user.id}
-                    style={styles.userStatsCard}
-                    className="admin-interactive-card"
-                  >
-                    <div style={styles.userTopRow}>
-                      <img
-                        src={user.avatar_url}
-                        alt={`${user.email} avatar`}
-                        style={styles.avatar}
-                      />
-                      <div style={styles.userIdentity}>
-                        <h3 style={styles.userEmail}>{user.email}</h3>
-                        <p style={styles.userRole}>
-                          {user.is_admin ? "Admin" : "Member"}
-                        </p>
-                      </div>
-                      <span style={styles.userCompletionPill}>
-                        {user.completion_rate}%
-                      </span>
-                    </div>
-                    <div style={styles.actions}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateUser(
-                            user.id,
-                            { is_admin: !user.is_admin },
-                            user.is_admin
-                              ? "User demoted successfully."
-                              : "User promoted successfully.",
-                          )
-                        }
-                        disabled={updatingUserId === user.id}
-                        style={styles.secondaryButton}
-                        className="admin-btn admin-secondary-btn"
-                      >
-                        {updatingUserId === user.id
-                          ? "Saving..."
-                          : user.is_admin
-                            ? "Make Member"
-                            : "Make Admin"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateUser(
-                            user.id,
-                            { is_active: !user.is_active },
-                            user.is_active
-                              ? "User archived successfully."
-                              : "User reactivated successfully.",
-                          )
-                        }
-                        disabled={updatingUserId === user.id}
-                        style={
-                          user.is_active
-                            ? styles.deleteGhostButton
-                            : styles.primaryButton
-                        }
-                        className={`admin-btn ${user.is_active ? "admin-danger-ghost-btn" : "admin-primary-btn"}`}
-                      >
-                        {updatingUserId === user.id
-                          ? "Saving..."
-                          : user.is_active
-                            ? "Archive User"
-                            : "Reactivate User"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openActivityHistory(user)}
-                        style={styles.ghostButton}
-                        className="admin-btn admin-ghost-btn"
-                      >
-                        View Activity
-                      </button>
-                    </div>
-                    <div style={styles.metricGrid}>
-                      <div style={styles.metricCard}>
-                        <span style={styles.metricLabel}>Checklists</span>
-                        <strong style={styles.metricValue}>
-                          {user.total_checklists}
-                        </strong>
-                      </div>
-                      <div style={styles.metricCard}>
-                        <span style={styles.metricLabel}>Completed</span>
-                        <strong style={styles.metricValue}>
-                          {user.completed_checklists}
-                        </strong>
-                      </div>
-                      <div style={styles.metricCard}>
-                        <span style={styles.metricLabel}>Pending</span>
-                        <strong style={styles.metricValue}>
-                          {user.pending_checklists}
-                        </strong>
-                      </div>
-                      <div style={styles.metricCard}>
-                        <span style={styles.metricLabel}>Completion</span>
-                        <strong style={styles.metricValue}>
-                          {user.completion_rate}%
-                        </strong>
-                      </div>
-                      <div style={styles.metricCard}>
-                        <span style={styles.metricLabel}>Completed Items</span>
-                        <strong style={styles.metricValue}>
-                          {user.completed_items || 0}
-                        </strong>
-                      </div>
-                      <div style={styles.metricCard}>
-                        <span style={styles.metricLabel}>Last Login</span>
-                        <strong style={styles.metricValueSmall}>
-                          {user.last_login_at
-                            ? new Date(user.last_login_at).toLocaleDateString()
-                            : "No logins yet"}
-                        </strong>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </section>
-            <div style={styles.workspace}>
-                <section style={styles.userRail} className="admin-surface">
+              {selectedChecklist ? (
+                <section style={styles.section} className="admin-surface">
                   <div style={styles.sectionAccent} />
                   <div style={styles.sectionHeader}>
-                    <h2 style={styles.sectionTitle}>Users</h2>
-                    <span style={styles.sectionMeta}>{users.length} users</span>
+                    <div>
+                      <h2 style={styles.sectionTitle}>Items</h2>
+                      <span style={styles.sectionMeta}>
+                        Managing items for {selectedChecklist.name}
+                      </span>
+                    </div>
                   </div>
-                  <p style={styles.sectionHint}>
-                    Select a user, then manage that user&apos;s checklists and
-                    items from the workspace on the right.
-                  </p>
-                  <div style={styles.userList}>
-                    {users.map((user) => (
-                      <article
-                        key={user.id}
-                        style={styles.userCard(
-                          String(selectedUserId) === String(user.id),
-                        )}
-                        className="admin-interactive-card"
-                        onClick={() => handleUserSelect(user)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            handleUserSelect(user);
-                          }
-                        }}
-                      >
-                        <div style={styles.userTopRow}>
-                          <img
-                            src={user.avatar_url}
-                            alt={`${user.email} avatar`}
-                            style={styles.avatar}
-                          />
-                          <div style={styles.userIdentity}>
-                            <h3 style={styles.userEmail}>{user.email}</h3>
-                            <p style={styles.userRole}>
-                              {user.is_admin ? "Admin" : "Member"}
-                            </p>
-                          </div>
-                          <span style={styles.userCompletionPill}>
-                            {user.completion_rate}%
-                          </span>
-                        </div>
-                        <div style={styles.userMiniStats}>
-                          <span>{user.total_checklists} checklists</span>
-                          <span>{user.pending_checklists} pending</span>
-                        </div>
-                      </article>
-                    ))}
-                  </div>
+                  <AdminFilters
+                    filters={itemFilters}
+                    onFilterChange={handleItemFilterChange}
+                    type="items"
+                    styles={styles}
+                    priorityOptions={PRIORITY_OPTIONS}
+                  />
+                  <AdminItemsList
+                    items={items}
+                    selectedChecklist={selectedChecklist}
+                    onToggleItem={toggleItemCompletion}
+                    onEditItem={openEditItemModal}
+                    onDeleteItem={handleDeleteItemRequest}
+                    onCreateItem={openCreateItemModal}
+                    loading={loadingItems}
+                    styles={styles}
+                  />
                 </section>
-
-                <div style={styles.mainWorkspace}>
-                  {selectedUser ? (
-                    <>
-                      <section
-                        style={styles.heroPanel}
-                        className="admin-surface"
-                      >
-                        <div style={styles.heroTopRow}>
-                          <div style={styles.heroIdentity}>
-                            <img
-                              src={selectedUser.avatar_url}
-                              alt={`${selectedUser.email} profile`}
-                              style={styles.heroAvatar}
-                            />
-                            <div>
-                              <span style={styles.eyebrow}>Selected User</span>
-                              <h2 style={styles.heroTitle}>
-                                {selectedUser.email}
-                              </h2>
-                              <p style={styles.heroSubtitle}>
-                                Use the checklist tab to create new checklists,
-                                edit existing ones, upload cover images, and
-                                open the items section for detailed work.
-                              </p>
-                            </div>
-                          </div>
-                          <div style={styles.heroRateCard}>
-                            <span style={styles.headerStatLabel}>
-                              Completion Rate
-                            </span>
-                            <strong style={styles.heroRateValue}>
-                              {selectedUser.completion_rate || 0}%
-                            </strong>
-                          </div>
-                        </div>
-                        <div style={styles.heroStatsGrid}>
-                          <div style={styles.heroStatCard}>
-                            <span style={styles.metricLabel}>Checklists</span>
-                            <strong style={styles.heroStatValue}>
-                              {visibleChecklists.length}
-                            </strong>
-                          </div>
-                          <div style={styles.heroStatCard}>
-                            <span style={styles.metricLabel}>Completed</span>
-                            <strong style={styles.heroStatValue}>
-                              {selectedUser.completed_checklists || 0}
-                            </strong>
-                          </div>
-                          <div style={styles.heroStatCard}>
-                            <span style={styles.metricLabel}>Pending</span>
-                            <strong style={styles.heroStatValue}>
-                              {selectedUser.pending_checklists || 0}
-                            </strong>
-                          </div>
-                        </div>
-                      </section>
-
-                      <section style={styles.section} className="admin-surface">
-                        <div style={styles.sectionAccent} />
-                        <div style={styles.sectionHeader}>
-                          <div>
-                            <h2 style={styles.sectionTitle}>
-                              {selectedUser.email} Checklists
-                            </h2>
-                            <span style={styles.sectionMeta}>
-                              {visibleChecklists.length} active
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={openCreateChecklistModal}
-                            style={styles.primaryButton}
-                            className="admin-btn admin-primary-btn"
-                          >
-                            Add New Checklist
-                          </button>
-                        </div>
-                        <div style={styles.filterGrid}>
-                          <div style={styles.modalField}>
-                            <label
-                              htmlFor="admin-checklist-search"
-                              style={styles.modalLabel}
-                            >
-                              Search Checklists
-                            </label>
-                            <input
-                              id="admin-checklist-search"
-                              name="search"
-                              value={checklistFilters.search}
-                              onChange={handleChecklistFilterChange}
-                              placeholder="Search by name or creator"
-                              style={styles.input}
-                              className="admin-input"
-                            />
-                          </div>
-                          <div style={styles.modalField}>
-                            <label
-                              htmlFor="admin-checklist-filter-type"
-                              style={styles.modalLabel}
-                            >
-                              Type
-                            </label>
-                            <select
-                              id="admin-checklist-filter-type"
-                              name="type"
-                              value={checklistFilters.type}
-                              onChange={handleChecklistFilterChange}
-                              style={styles.select}
-                              className="admin-input"
-                            >
-                              <option value="">All types</option>
-                              {CHECKLIST_TYPES.map((type) => (
-                                <option key={type} value={type}>
-                                  {type}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div style={styles.modalField}>
-                            <label
-                              htmlFor="admin-checklist-creator"
-                              style={styles.modalLabel}
-                            >
-                              Creator
-                            </label>
-                            <input
-                              id="admin-checklist-creator"
-                              name="creator"
-                              value={checklistFilters.creator}
-                              onChange={handleChecklistFilterChange}
-                              placeholder="Filter by creator email"
-                              style={styles.input}
-                              className="admin-input"
-                            />
-                          </div>
-                          <div style={styles.modalField}>
-                            <label
-                              htmlFor="admin-checklist-date-from"
-                              style={styles.modalLabel}
-                            >
-                              Created From
-                            </label>
-                            <input
-                              id="admin-checklist-date-from"
-                              type="date"
-                              name="date_from"
-                              value={checklistFilters.date_from}
-                              onChange={handleChecklistFilterChange}
-                              style={styles.input}
-                              className="admin-input"
-                            />
-                          </div>
-                          <div style={styles.modalField}>
-                            <label
-                              htmlFor="admin-checklist-date-to"
-                              style={styles.modalLabel}
-                            >
-                              Created To
-                            </label>
-                            <input
-                              id="admin-checklist-date-to"
-                              type="date"
-                              name="date_to"
-                              value={checklistFilters.date_to}
-                              onChange={handleChecklistFilterChange}
-                              style={styles.input}
-                              className="admin-input"
-                            />
-                          </div>
-                        </div>
-                        <div style={styles.checklistList}>
-                          {visibleChecklists.length === 0 ? (
-                            <p style={styles.emptyText}>
-                              This user has no checklists yet.
-                            </p>
-                          ) : (
-                            visibleChecklists.map((checklist) => (
-                              <article
-                                key={checklist.id}
-                                style={styles.checklistCard(
-                                  String(selectedChecklistId) ===
-                                    String(checklist.id),
-                                )}
-                                className="admin-interactive-card"
-                                onClick={() =>
-                                  handleChecklistCardClick(checklist.id)
-                                }
-                              >
-                                <div style={styles.checklistInfo}>
-                                  <div style={styles.checklistTopRow}>
-                                    <img
-                                      src={
-                                        checklist.image_url ||
-                                        DEFAULT_CHECKLIST_IMAGE
-                                      }
-                                      alt={`${checklist.name} cover`}
-                                      style={styles.checklistImage}
-                                    />
-                                    <div style={styles.checklistBody}>
-                                      <div style={styles.checklistHeadingRow}>
-                                        <h3 style={styles.checklistName}>
-                                          {checklist.name}
-                                        </h3>
-                                        <span style={styles.checklistType}>
-                                          {checklist.type}
-                                        </span>
-                                      </div>
-                                      <div style={styles.checklistStats}>
-                                        <span>Label: {checklist.name}</span>
-                                        <span>
-                                          Total items: {checklist.total_items}
-                                        </span>
-                                        <span>
-                                          Completed: {checklist.completed_items}
-                                        </span>
-                                        <span>
-                                          Pending: {checklist.pending_items}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                                <div style={styles.actions}>
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openEditChecklistModal(checklist);
-                                    }}
-                                    style={styles.secondaryButton}
-                                    className="admin-btn admin-secondary-btn"
-                                  >
-                                    Edit
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      openDeleteModal("checklist", checklist);
-                                    }}
-                                    style={styles.deleteButton}
-                                    className="admin-btn admin-danger-btn"
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              </article>
-                            ))
-                          )}
-                        </div>
-                      </section>
-
-                      {selectedChecklist ? (
-                        <section
-                          style={styles.section}
-                          className="admin-surface"
-                        >
-                          <div style={styles.sectionAccent} />
-                          <div style={styles.sectionHeader}>
-                            <div>
-                              <h2 style={styles.sectionTitle}>
-                                Items for {selectedChecklist.name}
-                              </h2>
-                              <span style={styles.sectionMeta}>
-                                {items.length} items · click a checklist card to
-                                switch
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={openCreateItemModal}
-                              style={styles.primaryButton}
-                              className="admin-btn admin-primary-btn"
-                            >
-                              Add Item
-                            </button>
-                          </div>
-                          <div style={styles.filterGrid}>
-                            <div style={styles.modalField}>
-                              <label
-                                htmlFor="admin-item-search"
-                                style={styles.modalLabel}
-                              >
-                                Search Items
-                              </label>
-                              <input
-                                id="admin-item-search"
-                                name="search"
-                                value={itemFilters.search}
-                                onChange={handleItemFilterChange}
-                                placeholder="Search by label or type"
-                                style={styles.input}
-                                className="admin-input"
-                              />
-                            </div>
-                            <div style={styles.modalField}>
-                              <label
-                                htmlFor="admin-item-type-filter"
-                                style={styles.modalLabel}
-                              >
-                                Type
-                              </label>
-                              <input
-                                id="admin-item-type-filter"
-                                name="type"
-                                value={itemFilters.type}
-                                onChange={handleItemFilterChange}
-                                placeholder="Task, Habit, Reminder..."
-                                style={styles.input}
-                                className="admin-input"
-                              />
-                            </div>
-                            <div style={styles.modalField}>
-                              <label
-                                htmlFor="admin-item-status-filter"
-                                style={styles.modalLabel}
-                              >
-                                Status
-                              </label>
-                              <select
-                                id="admin-item-status-filter"
-                                name="status"
-                                value={itemFilters.status}
-                                onChange={handleItemFilterChange}
-                                style={styles.select}
-                                className="admin-input"
-                              >
-                                <option value="">All statuses</option>
-                                <option value="completed">Completed</option>
-                                <option value="pending">Pending</option>
-                              </select>
-                            </div>
-                            <div style={styles.modalField}>
-                              <label
-                                htmlFor="admin-item-priority-filter"
-                                style={styles.modalLabel}
-                              >
-                                Priority
-                              </label>
-                              <select
-                                id="admin-item-priority-filter"
-                                name="priority"
-                                value={itemFilters.priority}
-                                onChange={handleItemFilterChange}
-                                style={styles.select}
-                                className="admin-input"
-                              >
-                                <option value="">All priorities</option>
-                                {PRIORITY_OPTIONS.map((option) => (
-                                  <option
-                                    key={option.value}
-                                    value={option.value}
-                                  >
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </div>
-                            <div style={styles.modalField}>
-                              <label
-                                htmlFor="admin-item-date-from"
-                                style={styles.modalLabel}
-                              >
-                                Created From
-                              </label>
-                              <input
-                                id="admin-item-date-from"
-                                type="date"
-                                name="date_from"
-                                value={itemFilters.date_from}
-                                onChange={handleItemFilterChange}
-                                style={styles.input}
-                                className="admin-input"
-                              />
-                            </div>
-                            <div style={styles.modalField}>
-                              <label
-                                htmlFor="admin-item-date-to"
-                                style={styles.modalLabel}
-                              >
-                                Created To
-                              </label>
-                              <input
-                                id="admin-item-date-to"
-                                type="date"
-                                name="date_to"
-                                value={itemFilters.date_to}
-                                onChange={handleItemFilterChange}
-                                style={styles.input}
-                                className="admin-input"
-                              />
-                            </div>
-                          </div>
-
-                          {loadingItems ? (
-                            <p style={styles.emptyText}>Loading items...</p>
-                          ) : items.length === 0 ? (
-                            <p style={styles.emptyText}>
-                              No items for this checklist yet.
-                            </p>
-                          ) : (
-                            <div style={styles.itemList}>
-                              {items.map((item) => (
-                                <article
-                                  key={item.id}
-                                  style={styles.itemCard}
-                                  className="admin-interactive-card"
-                                >
-                                  <div style={styles.itemInfo}>
-                                    <div style={styles.itemHeadingRow}>
-                                      <h3 style={styles.itemName}>
-                                        {item.label}
-                                      </h3>
-                                      <span style={styles.checklistType}>
-                                        {item.type}
-                                      </span>
-                                    </div>
-                                    <div style={styles.itemStatsRow}>
-                                      <span
-                                        style={styles.statusPill(
-                                          item.is_completed,
-                                        )}
-                                      >
-                                        {item.is_completed
-                                          ? "Completed"
-                                          : "Pending"}
-                                      </span>
-                                      <span style={styles.metaPill}>
-                                        {item.due_date || "No due date"}
-                                      </span>
-                                      <span style={styles.metaPill}>
-                                        {item.priority_label || item.priority}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div style={styles.actions}>
-                                    <label style={styles.checkboxAction}>
-                                      <input
-                                        type="checkbox"
-                                        checked={Boolean(item.is_completed)}
-                                        onChange={() =>
-                                          toggleItemCompletion(item)
-                                        }
-                                      />
-                                      <span>
-                                        {item.is_completed
-                                          ? "Complete"
-                                          : "Mark Complete"}
-                                      </span>
-                                    </label>
-                                    <button
-                                      type="button"
-                                      onClick={() => openEditItemModal(item)}
-                                      style={styles.secondaryButton}
-                                      className="admin-btn admin-secondary-btn"
-                                    >
-                                      Edit
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        openDeleteModal("item", item)
-                                      }
-                                      style={styles.deleteButton}
-                                      className="admin-btn admin-danger-btn"
-                                    >
-                                      Delete
-                                    </button>
-                                  </div>
-                                </article>
-                              ))}
-                            </div>
-                          )}
-                        </section>
-                      ) : (
-                        <section
-                          style={styles.emptyStateCard}
-                          className="admin-surface"
-                        >
-                          <span style={styles.eyebrow}>Items Section</span>
-                          <h2 style={styles.emptyStateTitle}>
-                            Click a checklist to view its items
-                          </h2>
-                          <p style={styles.emptyStateCopy}>
-                            Selecting a checklist opens its item management
-                            section where you can add, edit, delete, and toggle
-                            complete or incomplete.
-                          </p>
-                        </section>
-                      )}
-                    </>
-                  ) : (
-                    <section
-                      style={styles.emptyStateCard}
-                      className="admin-surface"
-                    >
-                      <span style={styles.eyebrow}>Ready to Manage</span>
-                      <h2 style={styles.emptyStateTitle}>
-                        Select a user to begin
-                      </h2>
-                      <p style={styles.emptyStateCopy}>
-                        Choose a user from the left rail to open a focused
-                        management view for that user&apos;s checklists, images,
-                        and items.
-                      </p>
-                    </section>
-                  )}
-                </div>
-              </div>
-          </>
-        )}
+              ) : (
+                <section style={styles.emptyStateCard} className="admin-surface">
+                  <span style={styles.eyebrow}>Items Section</span>
+                  <h2 style={styles.emptyStateTitle}>
+                    Click a checklist to view its items
+                  </h2>
+                  <p style={styles.emptyStateCopy}>
+                    Select a checklist inside this modal to add, edit, delete,
+                    and toggle checklist items without leaving the page.
+                  </p>
+                </section>
+              )}
+            </div>
+          </ModalShell>
+        ) : null}
 
         {checklistModal.open ? (
           <ModalShell
@@ -1896,7 +1200,7 @@ export default function AdminPage() {
 
         {activityModal.open ? (
           <ModalShell
-            title={`Login Activity${activityModal.user ? ` · ${activityModal.user.email}` : ""}`}
+            title={`Login Activity${activityModal.user ? ` Â· ${activityModal.user.email}` : ""}`}
             onClose={closeActivityModal}
           >
             {activityModal.loading ? (
@@ -2026,6 +1330,11 @@ const styles = {
   metaLine: {
     margin: "14px 0 0",
     color: "#e2e8f0",
+  },
+  headerActionWrap: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "flex-end",
   },
   headerStatsWrap: {
     display: "flex",
@@ -2174,6 +1483,13 @@ const styles = {
     flexDirection: "column",
     gap: SPACING.sm,
   },
+  inlineEmptyState: {
+    marginTop: SPACING.lg,
+    padding: SPACING.xl,
+    borderRadius: "24px",
+    border: `1px dashed ${THEME.borderStrong}`,
+    background: THEME.panelSoft,
+  },
   mainWorkspace: {
     display: "flex",
     flexDirection: "column",
@@ -2202,6 +1518,87 @@ const styles = {
     borderRadius: "24px",
     padding: SPACING.lg,
     background: THEME.card,
+  },
+  insightsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: SPACING.md,
+    alignItems: "stretch",
+  },
+  insightStatCard: {
+    border: `1px solid ${THEME.border}`,
+    borderRadius: "24px",
+    padding: SPACING.lg,
+    background:
+      "linear-gradient(145deg, rgba(15,23,42,0.98) 0%, rgba(14,165,233,0.12) 100%)",
+    boxShadow: "0 12px 30px rgba(14, 165, 233, 0.08)",
+    display: "flex",
+    flexDirection: "column",
+    gap: SPACING.sm,
+  },
+  ringCard: {
+    border: `1px solid ${THEME.borderStrong}`,
+    borderRadius: "24px",
+    padding: SPACING.lg,
+    background:
+      "linear-gradient(145deg, rgba(15,23,42,0.98) 0%, rgba(34,197,94,0.08) 100%)",
+    boxShadow: "0 16px 36px rgba(34, 197, 94, 0.08)",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "space-between",
+    gap: SPACING.sm,
+  },
+  metricIconRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: SPACING.sm,
+  },
+  metricEmoji: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: "36px",
+    height: "36px",
+    borderRadius: "12px",
+    background: "rgba(255,255,255,0.08)",
+    fontSize: "18px",
+  },
+  metricCaption: {
+    color: "#cbd5e1",
+    fontSize: "13px",
+    lineHeight: 1.6,
+  },
+  ringWrap: {
+    position: "relative",
+    width: "132px",
+    height: "132px",
+    alignSelf: "center",
+    marginTop: SPACING.sm,
+  },
+  ringSvg: {
+    display: "block",
+    filter: "drop-shadow(0 10px 20px rgba(56, 189, 248, 0.18))",
+  },
+  ringCenter: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+  },
+  ringValue: {
+    color: THEME.textStrong,
+    fontSize: "24px",
+    fontWeight: 800,
+  },
+  ringLabel: {
+    color: THEME.muted,
+    fontSize: "12px",
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
   },
   cardTitle: {
     margin: 0,
@@ -2252,6 +1649,18 @@ const styles = {
     fontSize: "13px",
     fontWeight: 700,
   },
+  userMiniProgressBlock: {
+    marginTop: SPACING.sm,
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  userMiniProgressText: {
+    color: "#dbeafe",
+    fontSize: "12px",
+    fontWeight: 700,
+    lineHeight: 1.5,
+  },
   metricGrid: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr",
@@ -2280,6 +1689,51 @@ const styles = {
     color: THEME.textStrong,
     lineHeight: 1.5,
   },
+  userItemProgressBlock: {
+    marginTop: SPACING.md,
+    padding: SPACING.sm,
+    borderRadius: "18px",
+    border: `1px solid ${THEME.border}`,
+    background: "rgba(15, 23, 42, 0.75)",
+    display: "flex",
+    flexDirection: "column",
+    gap: "10px",
+  },
+  progressHeaderRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: SPACING.sm,
+    flexWrap: "wrap",
+  },
+  progressCountText: {
+    color: "#dcfce7",
+    fontSize: "13px",
+    fontWeight: 800,
+  },
+  progressTrack: {
+    width: "100%",
+    height: "10px",
+    borderRadius: "999px",
+    overflow: "hidden",
+    background: "rgba(148, 163, 184, 0.16)",
+    border: `1px solid ${THEME.border}`,
+  },
+  progressTrackSmall: {
+    width: "100%",
+    height: "8px",
+    borderRadius: "999px",
+    overflow: "hidden",
+    background: "rgba(148, 163, 184, 0.16)",
+    border: `1px solid ${THEME.border}`,
+  },
+  progressFill: (value) => ({
+    width: `${Math.max(0, Math.min(100, Number(value || 0)))}%`,
+    height: "100%",
+    borderRadius: "999px",
+    background: "linear-gradient(90deg, #22c55e 0%, #38bdf8 100%)",
+    boxShadow: "0 0 18px rgba(34, 197, 94, 0.28)",
+  }),
   stackList: {
     display: "flex",
     flexDirection: "column",
@@ -2635,6 +2089,16 @@ const styles = {
     boxShadow: "0 28px 60px rgba(2, 6, 23, 0.34)",
     padding: SPACING.xl,
   },
+  managementModalPanel: {
+    maxWidth: "1200px",
+    maxHeight: "88vh",
+    overflowY: "auto",
+  },
+  managementModalBody: {
+    display: "flex",
+    flexDirection: "column",
+    gap: SPACING.lg,
+  },
   modalHeader: {
     display: "flex",
     justifyContent: "space-between",
@@ -2791,3 +2255,5 @@ if (
   `;
   document.head.appendChild(styleSheet);
 }
+
+
