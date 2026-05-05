@@ -37,6 +37,7 @@ describe("App routing", () => {
   beforeEach(() => {
     window.history.pushState({}, "", "/");
     localStorage.clear();
+    sessionStorage.clear();
     vi.clearAllMocks();
   });
 
@@ -47,14 +48,14 @@ describe("App routing", () => {
   });
 
   it("sends authenticated users to dashboard from root", async () => {
-    localStorage.setItem("access_token", "token");
+    sessionStorage.setItem("access_token", "token");
     window.history.pushState({}, "", "/");
     render(<App />);
     expect(await screen.findByTestId("dashboard-screen")).toBeInTheDocument();
   });
 
   it("sends authenticated admins to the admin console from root", async () => {
-    localStorage.setItem("access_token", "token");
+    sessionStorage.setItem("access_token", "token");
     localStorage.setItem("is_admin", "true");
     window.history.pushState({}, "", "/");
     render(<App />);
@@ -68,14 +69,14 @@ describe("App routing", () => {
   });
 
   it("redirects authenticated users away from login to dashboard", async () => {
-    localStorage.setItem("access_token", "token");
+    sessionStorage.setItem("access_token", "token");
     window.history.pushState({}, "", "/login");
     render(<App />);
     expect(await screen.findByTestId("dashboard-screen")).toBeInTheDocument();
   });
 
   it("redirects authenticated admins away from login to admin", async () => {
-    localStorage.setItem("access_token", "token");
+    sessionStorage.setItem("access_token", "token");
     localStorage.setItem("is_admin", "true");
     window.history.pushState({}, "", "/login");
     render(<App />);
@@ -89,14 +90,14 @@ describe("App routing", () => {
   });
 
   it("renders the admin screen for authenticated users", async () => {
-    localStorage.setItem("access_token", "token");
+    sessionStorage.setItem("access_token", "token");
     window.history.pushState({}, "", "/admin");
     render(<App />);
     expect(await screen.findByTestId("admin-screen")).toBeInTheDocument();
   });
 
   it("redirects authenticated admins away from dashboard to admin", async () => {
-    localStorage.setItem("access_token", "token");
+    sessionStorage.setItem("access_token", "token");
     localStorage.setItem("is_admin", "true");
     window.history.pushState({}, "", "/dashboard");
     render(<App />);
@@ -125,7 +126,7 @@ describe("App routing", () => {
     
     // Clicking the login button calls setIsLoggedIn(true). 
     // To trigger the route transition, we also simulate what Callback does:
-    localStorage.setItem("access_token", "token");
+    sessionStorage.setItem("access_token", "token");
     
     // Click the mocked login button
     loginBtn.click();
@@ -135,13 +136,13 @@ describe("App routing", () => {
   });
 
   it("updates login state when onLogout is called", async () => {
-    localStorage.setItem("access_token", "token");
+    sessionStorage.setItem("access_token", "token");
     window.history.pushState({}, "", "/dashboard");
     render(<App />);
     const logoutBtn = await screen.findByTestId("mock-logout-btn");
     
     // Simulate what Dashboard logout usually does:
-    localStorage.removeItem("access_token");
+    sessionStorage.removeItem("access_token");
     
     logoutBtn.click();
     

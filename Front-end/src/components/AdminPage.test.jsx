@@ -179,6 +179,8 @@ describe("AdminPage", () => {
     mockApi.patch.mockReset();
     mockApi.delete.mockReset();
     mockNavigate.mockReset();
+    localStorage.clear();
+    sessionStorage.clear();
     globalThis.URL.createObjectURL = vi.fn(() => "blob:checklist-preview");
   });
 
@@ -498,7 +500,7 @@ describe("AdminPage", () => {
 
   it("signs out from the admin page", async () => {
     const user = userEvent.setup();
-    localStorage.setItem("access_token", "token");
+    sessionStorage.setItem("access_token", "token");
     localStorage.setItem("email", "admin@example.com");
     localStorage.setItem("is_admin", "true");
     setupAdminMocks();
@@ -507,7 +509,7 @@ describe("AdminPage", () => {
     await screen.findByRole("heading", { name: "Admin Console" });
     await user.click(screen.getByRole("button", { name: "Sign out" }));
 
-    expect(localStorage.getItem("access_token")).toBeNull();
+    expect(sessionStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("email")).toBeNull();
     expect(localStorage.getItem("is_admin")).toBeNull();
     expect(mockNavigate).toHaveBeenCalledWith("/login");

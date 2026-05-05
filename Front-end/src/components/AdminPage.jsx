@@ -9,6 +9,7 @@ import {
   AdminUsersList,
   UserDetailCard,
 } from "./AdminPageSections";
+import { clearAccessToken } from "../services/authStorage";
 import { attachAuthHeader } from "./dashboardHelpers";
 
 const API = axios.create({
@@ -765,7 +766,7 @@ export default function AdminPage() {
   }
 
   function handleLogout() {
-    localStorage.removeItem("access_token");
+    clearAccessToken();
     localStorage.removeItem("email");
     localStorage.removeItem("is_admin");
     navigate("/login");

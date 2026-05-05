@@ -98,7 +98,7 @@ describe("Callback", () => {
       expect(registerMock).toHaveBeenCalledWith("external-token");
     });
 
-    expect(localStorage.getItem("access_token")).toBe("internal-token");
+    expect(sessionStorage.getItem("access_token")).toBe("internal-token");
     expect(localStorage.getItem("email")).toBe("lawrence@example.com");
     expect(localStorage.getItem("is_admin")).toBe("false");
     expect(navigateMock).toHaveBeenCalledWith("/dashboard");

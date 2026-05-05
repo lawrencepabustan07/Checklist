@@ -4,10 +4,10 @@ from django.db import models
 
 class LoginActivity(models.Model):
     PROVIDER_AUTH0 = "auth0"
-    PROVIDER_PASSWORD = "password"
+    PROVIDER_LOCAL_AUTH = "local_auth"
     PROVIDER_CHOICES = [
         (PROVIDER_AUTH0, "Auth0"),
-        (PROVIDER_PASSWORD, "Password"),
+        (PROVIDER_LOCAL_AUTH, "Password"),
     ]
 
     user = models.ForeignKey(

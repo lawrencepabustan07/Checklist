@@ -94,11 +94,9 @@ jobs:
 
       - name: Run ESLint security rules
         working-directory: Front-end
-        env:
-          ESLINT_USE_FLAT_CONFIG: "false"
         run: |
           mkdir -p ../security-reports
-          npx eslint --resolve-plugins-relative-to . --config ../.eslintrc.json --ext .js,.jsx -f json -o ../security-reports/eslint-security.json src
+          npx eslint --config eslint.security.config.js -f json -o ../security-reports/eslint-security.json src
 
       - name: Upload ESLint security report
         if: always()

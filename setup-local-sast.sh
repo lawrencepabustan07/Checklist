@@ -31,6 +31,7 @@ echo
 echo "Local SAST setup complete."
 echo "Run all checks with:"
 echo "  pre-commit run --all-files"
+echo "  cd Front-end && npx eslint --config eslint.security.config.js -f json -o ../security-reports/eslint-security.json src"
 echo
 echo "Security reports in CI are uploaded as artifacts from:"
 echo "  - Bandit JSON"

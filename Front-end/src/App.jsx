@@ -9,13 +9,14 @@ import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
 import Callback from "./components/Callback";
 import AdminPage from "./components/AdminPage";
+import { getAccessToken } from "./services/authStorage";
 
 function isAdminUser() {
   return localStorage.getItem("is_admin") === "true";
 }
 
 function ProtectedRoute({ children }) {
-  const token = localStorage.getItem("access_token");
+  const token = getAccessToken();
   if (!token) {
     return <Navigate to="/login" replace />;
   }
@@ -23,7 +24,7 @@ function ProtectedRoute({ children }) {
 }
 
 function PublicRoute({ children }) {
-  const token = localStorage.getItem("access_token");
+  const token = getAccessToken();
   if (token) {
     return <Navigate to={isAdminUser() ? "/admin" : "/dashboard"} replace />;
   }
@@ -32,7 +33,7 @@ function PublicRoute({ children }) {
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(
-    () => !!localStorage.getItem("access_token"),
+    () => !!getAccessToken(),
   );
 
   return (

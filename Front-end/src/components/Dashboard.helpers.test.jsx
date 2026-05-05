@@ -31,10 +31,11 @@ import {
 describe("Dashboard helpers", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   it("adds the bearer token when present", () => {
-    localStorage.setItem("access_token", "token-123");
+    sessionStorage.setItem("access_token", "token-123");
     const config = { headers: {} };
 
     const result = attachAuthHeader(config);

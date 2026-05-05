@@ -80,7 +80,7 @@ const THEME_TOKENS = {
 };
 
 function attachAuthHeader(config) {
-  const token = localStorage.getItem("access_token");
+  const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -254,3 +254,4 @@ export {
   THEME_TOKENS,
   validateImageFile,
 };
+import { getAccessToken } from "../services/authStorage";

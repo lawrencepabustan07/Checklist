@@ -51,6 +51,16 @@ def load_allowed_hosts():
     return ["127.0.0.1", "localhost"]
 
 
+def load_cors_allowed_origins():
+    raw_origins = os.getenv("DJANGO_CORS_ALLOWED_ORIGINS", "")
+    if raw_origins.strip():
+        return [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+    return [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+    ]
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
@@ -98,7 +108,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-CORS_ORIGIN_ALLOW_ALL = True
+CORS_ALLOW_ALL_ORIGINS = env_flag("DJANGO_CORS_ALLOW_ALL", default=False)
+CORS_ALLOWED_ORIGINS = [] if CORS_ALLOW_ALL_ORIGINS else load_cors_allowed_origins()
 
 
 ROOT_URLCONF = 'Myproject.urls'

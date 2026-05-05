@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { register } from "../services/api";
 import { clearStoredCodeVerifier, getStoredCodeVerifier } from "./authPkce";
+import { setAccessToken } from "../services/authStorage";
 
 export default function Callback() {
   const navigate = useNavigate();
@@ -58,7 +59,7 @@ export default function Callback() {
         const registerResponse = await register(cleanToken);
         const registerData = registerResponse.data;
 
-        localStorage.setItem("access_token", registerData.access_token);
+        setAccessToken(registerData.access_token);
         localStorage.setItem("email", registerData.email);
         let nextPath = "/dashboard";
 

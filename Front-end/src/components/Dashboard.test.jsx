@@ -133,8 +133,9 @@ describe("Dashboard", () => {
     mockApi.patch.mockReset();
     mockApi.delete.mockReset();
     localStorage.clear();
+    sessionStorage.clear();
     localStorage.setItem("email", "lawrence@example.com");
-    localStorage.setItem("access_token", "token");
+    sessionStorage.setItem("access_token", "token");
     vi.spyOn(window, "confirm").mockReturnValue(true);
     window.matchMedia = vi.fn().mockReturnValue({
       matches: false,
@@ -1021,7 +1022,7 @@ describe("Dashboard", () => {
     await screen.findByText("Welcome back, lawrence");
     await user.click(screen.getByRole("button", { name: "Sign out" }));
 
-    expect(localStorage.getItem("access_token")).toBeNull();
+    expect(sessionStorage.getItem("access_token")).toBeNull();
     expect(localStorage.getItem("email")).toBeNull();
     expect(onLogout).toHaveBeenCalledTimes(1);
   });

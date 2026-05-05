@@ -23,6 +23,7 @@ import {
   THEME_TOKENS,
   validateImageFile,
 } from "./dashboardHelpers";
+import { clearAccessToken } from "../services/authStorage";
 
 const API = axios.create({
   baseURL: "http://127.0.0.1:8000/api",
@@ -673,7 +674,7 @@ export default function Dashboard({ onLogout }) {
   }
 
   function handleLogout() {
-    localStorage.removeItem("access_token");
+    clearAccessToken();
     localStorage.removeItem("email");
     localStorage.removeItem("is_admin");
     onLogout();
